@@ -9,7 +9,15 @@ WINDOWS (easy way)
   3. Press Enter to accept the default folder (%LOCALAPPDATA%\UOSmallz).
      If you already have the UO Classic 7.0.23.1 files, type that folder;
      otherwise press Enter and the installer downloads them (~930 MB).
-  4. Double-click "UO Smallz" on your desktop.
+  4. Double-click "UO Smallz" on your desktop (or in the Start menu).
+
+UPDATES (Windows)
+  The UO Smallz shortcut checks for a newer client each time you start it
+  (a few seconds at most; no internet = it just starts the game). When one
+  is out you get Update Now / Play Now / Skip This Version. Updating keeps
+  your settings.json and everything in Client\Data (characters' profiles,
+  macros, window layout); the previous client stays in Client.old.
+  Running install.bat again is also safe: it keeps your settings.json.
 
 LINUX
   Run install.sh from the installer zip. Needs curl, unzip, python3, p7zip,

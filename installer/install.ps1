@@ -10,12 +10,19 @@ $ProgressPreference = "SilentlyContinue"
 $ShardName     = "UO Smallz"
 $ShardHost     = "uosmallz.duckdns.org"
 $ShardPort     = 2593
-$ClientZipUrl  = "https://github.com/wesleysnoe-dev/uosmallz-client/releases/download/v1/UOSmallz-Client-win-x64.zip"
+# The client comes from the latest uosmallz-client release (asset digest /
+# SHA256SUMS.txt checked). If GitHub cannot be asked, the v1 build below is
+# the fallback, pinned by hash.
+$ClientFallbackTag = "v1"
+$ClientFallbackUrl = "https://github.com/wesleysnoe-dev/uosmallz-client/releases/download/v1/UOSmallz-Client-win-x64.zip"
+$ClientFallbackSha = "bfb3a6e2501e9344da7646aba0cb84842fc38f56aff5f8a96718e25b46adbe1a"
 # Same community mirror and pinned file as the UO Offline installer.
 $UODataUrl     = "https://mirror.ashkantra.de/fullclients/7.0.23.1.exe"
 $UODataSha256  = "23b0548252bb4e6f39afbddac2e64f8deb862fbfaccb1303b87895d295e01839"
 $UODataVersion = "7.0.23.1"
 $ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Shared with the launcher: release lookup, SHA256, version stamp, settings merge.
+. (Join-Path $ScriptDir "update-check.ps1") -NoMain -InstallRoot $ScriptDir
 
 function Say($m)  { Write-Host "    $m" }
 function Ok($m)   { Write-Host "[ok] $m" -ForegroundColor Green }
@@ -241,13 +248,32 @@ try {
 
   # 1. Game client
   Step "Game client (TazUO)"
+  $clientTag = $ClientFallbackTag; $clientUrl = $ClientFallbackUrl; $clientSha = $ClientFallbackSha
+  try {
+    $rel = Get-LatestRelease
+    if ($rel -and $rel.Sha256) { $clientTag = $rel.Tag; $clientUrl = $rel.Url; $clientSha = $rel.Sha256 }
+    elseif ($rel) { Warn "The latest release publishes no SHA256; using the pinned $ClientFallbackTag client." }
+  } catch {
+    Warn "Could not ask GitHub for the latest client ($($_.Exception.Message)); using the pinned $ClientFallbackTag client."
+  }
+  Say "Client release: $clientTag"
   $zip = Join-Path $ScriptDir "UOSmallz-Client-win-x64.zip"
-  if (-not (Test-Path -LiteralPath $zip)) {
+  if ((Test-Path -LiteralPath $zip) -and -not (Test-Sha256 $zip $clientSha)) {
+    if (Test-Sha256 $zip $ClientFallbackSha) { $clientTag = $ClientFallbackTag; $clientSha = $ClientFallbackSha }
+    else { Warn "The client zip next to the installer is not a known build; downloading instead."; $zip = $null }
+  } elseif (-not (Test-Path -LiteralPath $zip)) { $zip = $null }
+  if (-not $zip) {
     $zip = Join-Path $InstallRoot "UOSmallz-Client-win-x64.zip"
     Say "Downloading the client (~85 MB)..."
-    Get-File $ClientZipUrl $zip
+    Get-File $clientUrl $zip
+    if (-not (Test-Sha256 $zip $clientSha)) {
+      Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+      Die "The client download did not match its SHA256. It was deleted; nothing was changed. Try again later."
+    }
   }
-  Say "Unpacking..."
+  Ok "Client zip SHA256 verified ($clientTag)"
+  if (@(Get-ClientProcess $ClientDir).Count -gt 0) { Die "UO Smallz is running. Close the game and run install.bat again." }
+  Say "Unpacking (your settings.json and Data\ profiles are kept)..."
   Expand-Archive -LiteralPath $zip -DestinationPath $ClientDir -Force
   $exe = Join-Path $ClientDir "TazUO.exe"
   if (-not (Test-Path -LiteralPath $exe)) {
@@ -309,39 +335,58 @@ try {
 
   # 3. Settings
   Step "Client settings"
-  $dataJson = $uoData.Replace([char]92, [char]47).Replace('"', '\"')
-  $json = @"
-{
-  "username": "",
-  "password": "",
-  "ip": "$ShardHost",
-  "port": $ShardPort,
-  "ultimaonlinedirectory": "$dataJson",
-  "clientversion": "$UODataVersion",
-  "lastservernum": 1,
-  "last_server_name": "$ShardName",
-  "fps": 60,
-  "encryption": 0,
-  "saveaccount": false,
-  "autologin": false,
-  "plugins": []
-}
-"@
+  $defaults = [ordered]@{
+    username              = ""
+    password              = ""
+    ip                    = $ShardHost
+    port                  = $ShardPort
+    ultimaonlinedirectory = $uoData.Replace([char]92, [char]47)
+    clientversion         = $UODataVersion
+    lastservernum         = 1
+    last_server_name      = $ShardName
+    fps                   = 60
+    encryption            = 0
+    saveaccount           = $false
+    autologin             = $false
+    plugins               = @()
+  }
   $settings = Join-Path (Split-Path -Parent $exe) "settings.json"
-  [IO.File]::WriteAllText($settings, $json, (New-Object Text.UTF8Encoding($false)))
-  Ok "Wrote $settings"
+  $set = @(Merge-ClientSettings $settings $defaults)
+  if ($set.Count -eq 0) { Ok "Kept your settings.json as it is ($settings)" }
+  else { Ok "settings.json: set $($set -join ', ') ($settings)" }
+
+  # 3b. Version stamp and launcher (update check at every start)
+  Write-Stamp (Join-Path $InstallRoot "client-version.json") $clientTag $clientSha
+  foreach ($f in @("update-check.ps1", "launch.vbs")) {
+    Copy-Item -LiteralPath (Join-Path $ScriptDir $f) -Destination (Join-Path $InstallRoot $f) -Force
+  }
+  Ok "Launcher installed (client $clientTag)"
 
   # 4. Shortcut
-  Step "Desktop shortcut"
-  $lnkPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "UO Smallz.lnk"
+  Step "Shortcuts"
+  # The shortcuts run launch.vbs (no console window), which runs the update
+  # check and then the game. Without Windows Script Host, they run the check
+  # through PowerShell directly (a console may flash briefly).
   $wsh = New-Object -ComObject WScript.Shell
-  $lnk = $wsh.CreateShortcut($lnkPath)
-  $lnk.TargetPath = $exe
-  $lnk.WorkingDirectory = Split-Path -Parent $exe
-  $lnk.IconLocation = "$exe,0"
-  $lnk.Description = "Play on the UO Smallz shard (${ShardHost}:$ShardPort)"
-  $lnk.Save()
-  Ok "Desktop shortcut: UO Smallz"
+  $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+  $vbs = Join-Path $InstallRoot "launch.vbs"
+  $ps = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+  $startMenu = Join-Path ([Environment]::GetFolderPath("Programs")) "UO Smallz.lnk"
+  foreach ($lnkPath in @((Join-Path ([Environment]::GetFolderPath("Desktop")) "UO Smallz.lnk"), $startMenu)) {
+    $lnk = $wsh.CreateShortcut($lnkPath)
+    if (Test-Path -LiteralPath $wscript) {
+      $lnk.TargetPath = $wscript
+      $lnk.Arguments = "`"$vbs`""
+    } else {
+      $lnk.TargetPath = $ps
+      $lnk.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $InstallRoot 'update-check.ps1')`""
+    }
+    $lnk.WorkingDirectory = $InstallRoot
+    $lnk.IconLocation = "$exe,0"
+    $lnk.Description = "Play on the UO Smallz shard (${ShardHost}:$ShardPort)"
+    $lnk.Save()
+  }
+  Ok "Shortcuts: UO Smallz (desktop and Start menu)"
 
   Write-Host ""
   Write-Host "Done! Double-click 'UO Smallz' on your desktop." -ForegroundColor Green
