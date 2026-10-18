@@ -140,38 +140,50 @@ function SwapT2AMap {
   } else { Say "UOSA installer already cached at $uosaExe." }
   Assert-Pinned $uosaExe $T2AInstallerSha256 "the UO Second Age installer (UOSA_Client_Setup.exe)"
 
-  # 2. Extract the three map files. Prefer 7-Zip (reads the NSIS archive
-  #    directly); fall back to a silent install into a scratch folder.
+  # 2. Extract ONLY the three map files with 7-Zip. The UOSA setup is never
+  #    run: it carries Razor and UO Auto-Map installers that it launches even
+  #    when silent. Without an installed 7-Zip, a private copy is fetched
+  #    (pinned 7zr.exe unpacks the pinned 7-Zip package; its 7z.exe reads NSIS).
   $extractDir = Join-Path $T2ASrcDir "uosa-install"
   New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
 
-  $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
-  if (-not $sevenZip) { $sevenZip = Get-Command 7za -ErrorAction SilentlyContinue }
-  if (-not $sevenZip) { $sevenZip = Get-Command (Join-Path $env:ProgramFiles "7-Zip\7z.exe") -ErrorAction SilentlyContinue }
+  $sevenZipExe = $null
+  foreach ($c in @((Join-Path $env:ProgramFiles "7-Zip\7z.exe"), (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe"))) {
+    if ($c -and (Test-Path -LiteralPath $c)) { $sevenZipExe = $c; break }
+  }
+  if (-not $sevenZipExe) { $g = Get-Command 7z -ErrorAction SilentlyContinue; if ($g) { $sevenZipExe = $g.Source } }
 
   $haveMuls = $true
   foreach ($f in $T2AMulFiles) { if (-not (Test-Path (Join-Path $extractDir $f))) { $haveMuls = $false } }
 
   if (-not $haveMuls) {
-    if ($sevenZip) {
-      Say "Extracting the classic map files with 7-Zip..."
-      Invoke-Native $sevenZip.Source (@("x", "-y", "-o$extractDir", $uosaExe) + $T2AMulFiles) | Out-Null
-    } elseif ($extractDir -match '\s') {
-      Warn "7-Zip not found and the extract path contains spaces (the silent UOSA installer cannot handle that)."
-      Warn "Install 7-Zip from https://www.7-zip.org and re-run, or follow docs/CLASSIC-MAP.md manually. Keeping modern map."
-      return
-    } else {
-      Say "7-Zip not found; running the UOSA installer silently into $extractDir..."
-      # NSIS switches: /S = silent, /D = install dir (must be last, unquoted).
-      # RunAsInvoker: no UAC prompt; it only needs to write into $extractDir.
-      $prevCompat = $env:__COMPAT_LAYER
-      $env:__COMPAT_LAYER = "RunAsInvoker"
-      try { Start-Process -FilePath $uosaExe -ArgumentList "/S", "/D=$extractDir" -Wait }
-      finally { $env:__COMPAT_LAYER = $prevCompat }
+    if (-not $sevenZipExe) {
+      $szDir = Join-Path $T2ASrcDir "7zip"
+      $szExe = Join-Path $szDir "7z.exe"
+      if (-not (Test-Path -LiteralPath $szExe)) {
+        Say "Fetching 7-Zip (portable, ~2 MB) to read the map files..."
+        New-Item -ItemType Directory -Force -Path $szDir | Out-Null
+        $hdr = @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+        $zr  = Join-Path $T2ASrcDir "7zr.exe"
+        $pkg = Join-Path $T2ASrcDir "7z2409-x64.exe"
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7zr.exe" -OutFile $zr -Headers $hdr -UseBasicParsing
+        Assert-Pinned $zr "256feca8e274e5da655e2a284fabafd9f554365eb164862089dacd4e8276d282" "7zr.exe"
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2409-x64.exe" -OutFile $pkg -Headers $hdr -UseBasicParsing
+        Assert-Pinned $pkg "bdd1a33de78618d16ee4ce148b849932c05d0015491c34887846d431d29f308e" "7z2409-x64.exe"
+        & $zr x -y "-o$szDir" $pkg 7z.exe 7z.dll 2>&1 | Out-Null
+        Remove-Item -LiteralPath $zr, $pkg -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $szExe) { $sevenZipExe = $szExe }
     }
+    if (-not $sevenZipExe) {
+      Warn "Could not get 7-Zip; keeping the modern map. Install 7-Zip from https://www.7-zip.org and re-run."
+      return
+    }
+    Say "Extracting the classic map files with 7-Zip..."
+    & $sevenZipExe (@("x", "-y", "-r", "-o$extractDir", $uosaExe) + $T2AMulFiles) 2>&1 | Out-Null
   }
 
-  # Locate the three muls (a silent install may nest them).
+  # Locate the three muls (they may sit in a subfolder of the archive).
   $srcMap = @{}
   foreach ($f in $T2AMulFiles) {
     $hit = Get-ChildItem -Path $extractDir -Recurse -Filter $f -ErrorAction SilentlyContinue | Select-Object -First 1
