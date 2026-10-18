@@ -1,0 +1,945 @@
+diff --git a/src/ClassicUO.Client/Configuration/Profile.cs b/src/ClassicUO.Client/Configuration/Profile.cs
+index 170810d..929dab7 100644
+--- a/src/ClassicUO.Client/Configuration/Profile.cs
++++ b/src/ClassicUO.Client/Configuration/Profile.cs
+@@ -1407,6 +1407,11 @@ namespace ClassicUO.Configuration
+ 
+                                     break;
+ 
++                                case GumpType.WorldChat:
++                                    gump = new WorldChatGump(world);
++
++                                    break;
++
+                                 case GumpType.MacroButton:
+                                     gump = new MacroButtonGump(world);
+ 
+diff --git a/src/ClassicUO.Client/Game/Managers/JournalManager.cs b/src/ClassicUO.Client/Game/Managers/JournalManager.cs
+index d4b3d00..910ef94 100644
+--- a/src/ClassicUO.Client/Game/Managers/JournalManager.cs
++++ b/src/ClassicUO.Client/Game/Managers/JournalManager.cs
+@@ -18,7 +18,7 @@ namespace ClassicUO.Game.Managers
+ 
+         public static Deque<JournalEntry> Entries { get; } = new(Constants.MAX_JOURNAL_HISTORY_COUNT);
+ 
+-        public void Add(string text, ushort hue, string name, TextType type, bool isunicode = true, MessageType messageType = MessageType.Regular)
++        public void Add(string text, ushort hue, string name, TextType type, bool isunicode = true, MessageType messageType = MessageType.Regular, string link = null)
+         {
+             if (string.IsNullOrWhiteSpace(text))
+                 return;
+@@ -48,6 +48,7 @@ namespace ClassicUO.Game.Managers
+             entry.Time = timeNow;
+             entry.TextType = type;
+             entry.MessageType = messageType;
++            entry.Link = link;
+ 
+             if (ProfileManager.CurrentProfile != null && ProfileManager.CurrentProfile.ForceUnicodeJournal)
+             {
+@@ -153,5 +154,8 @@ namespace ClassicUO.Game.Managers
+         public TextType TextType;
+         public DateTime Time;
+         public MessageType MessageType;
++
++        // UO Offline: the server's link on a chat line ("join 12"), or null.
++        public string Link;
+     }
+ }
+diff --git a/src/ClassicUO.Client/Game/Managers/MessageEventArgs.cs b/src/ClassicUO.Client/Game/Managers/MessageEventArgs.cs
+index db29833..bdee3ff 100644
+--- a/src/ClassicUO.Client/Game/Managers/MessageEventArgs.cs
++++ b/src/ClassicUO.Client/Game/Managers/MessageEventArgs.cs
+@@ -36,6 +36,9 @@ namespace ClassicUO.Game.Managers
+ 
+         public Entity Parent { get; }
+ 
++        // UO Offline: the chat line's link ("join 12"), or null.
++        public string Link { get; set; }
++
+         public string Text { get; }
+ 
+         public string Name { get; }
+diff --git a/src/ClassicUO.Client/Game/Managers/MessageManager.cs b/src/ClassicUO.Client/Game/Managers/MessageManager.cs
+index 66e1cde..12f68ce 100644
+--- a/src/ClassicUO.Client/Game/Managers/MessageManager.cs
++++ b/src/ClassicUO.Client/Game/Managers/MessageManager.cs
+@@ -71,6 +71,9 @@ namespace ClassicUO.Game.Managers
+                 return;
+             }
+ 
++            // UO Offline: a chat line's link marker never reaches the screen.
++            string link = UI.Gumps.UoOfflineLinks.Extract(ref text);
++
+             Profile currentProfile = ProfileManager.CurrentProfile;
+ 
+             if (textType == TextType.OBJECT)
+@@ -295,6 +298,9 @@ namespace ClassicUO.Game.Managers
+                         unicode,
+                         lang
+                     )
++                    {
++                        Link = link
++                    }
+                 );
+         }
+ 
+diff --git a/src/ClassicUO.Client/Game/Scenes/GameScene.cs b/src/ClassicUO.Client/Game/Scenes/GameScene.cs
+index 99f3a96..fb8fcc8 100644
+--- a/src/ClassicUO.Client/Game/Scenes/GameScene.cs
++++ b/src/ClassicUO.Client/Game/Scenes/GameScene.cs
+@@ -380,7 +380,7 @@ namespace ClassicUO.Game.Scenes
+                     ProfileManager.CurrentProfile?.SystemMessageGlobalChatRegex
+                 );
+ 
+-                _world.Journal.Add(text, hue, name, e.TextType, e.IsUnicode, journalMessageType);
++                _world.Journal.Add(text, hue, name, e.TextType, e.IsUnicode, journalMessageType, e.Link);
+             }
+         }
+ 
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/GumpType.cs b/src/ClassicUO.Client/Game/UI/Gumps/GumpType.cs
+index 6aad3ca..5d6a3e3 100644
+--- a/src/ClassicUO.Client/Game/UI/Gumps/GumpType.cs
++++ b/src/ClassicUO.Client/Game/UI/Gumps/GumpType.cs
+@@ -38,6 +38,9 @@ namespace ClassicUO.Game.UI.Gumps
+         MenuGump,
+         TextEntryDialogGump,
+         HealthBarCollector,
+-        OldJournal
++        OldJournal,
++
++        // UO Offline (a fixed number, clear of TazUO's own)
++        WorldChat = 9100
+     }
+ }
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/TopBarGump.cs b/src/ClassicUO.Client/Game/UI/Gumps/TopBarGump.cs
+index 2fb50a4..388dd82 100644
+--- a/src/ClassicUO.Client/Game/UI/Gumps/TopBarGump.cs
++++ b/src/ClassicUO.Client/Game/UI/Gumps/TopBarGump.cs
+@@ -62,6 +62,7 @@ namespace ClassicUO.Game.UI.Gumps
+                 new[] { 1, (int) Buttons.Journal },
+                 new[] { 0, (int) Buttons.Chat },
+                 new[] { 1, (int) Buttons.WorldMap },
++                new[] { 0, (int) Buttons.Groups },
+                 new[] { 1, (int) Buttons.UOStore },
+             };
+ 
+@@ -74,6 +75,7 @@ namespace ClassicUO.Game.UI.Gumps
+                 cliloc.GetString(3000129, TazLang.Get("journal")),
+                 cliloc.GetString(3000131, TazLang.Get("chat")),
+                 StringHelper.CapitalizeAllWords(cliloc.GetString(1015233, TazLang.Get("world_map"))),
++                "Groups", // UO Offline: the server's Group Finder
+                 cliloc.GetString(1158008, TazLang.Get("uostore")),
+             };
+ 
+@@ -99,9 +101,10 @@ namespace ClassicUO.Game.UI.Gumps
+ 
+             for (int i = 0; i < textTable.Length; i++)
+             {
+-                if (!hasUOStore && i >= (int)Buttons.UOStore)
++                // UO Offline: by button, not position (Groups sits before it).
++                if (!hasUOStore && textTable[i][1] == (int)Buttons.UOStore)
+                 {
+-                    break;
++                    continue;
+                 }
+ 
+                 ushort graphic = (ushort)(textTable[i][0] != 0 ? 0x098D : 0x098B);
+@@ -464,7 +467,9 @@ namespace ClassicUO.Game.UI.Gumps
+                     break;
+ 
+                 case Buttons.Chat:
+-                    GameActions.OpenChat(World);
++                    // UO Offline: the shard's chat window, not the old
++                    // chat-channel system.
++                    WorldChatGump.Toggle(World);
+ 
+                     break;
+ 
+@@ -479,6 +484,12 @@ namespace ClassicUO.Game.UI.Gumps
+                 case Buttons.WorldMap:
+                     GameActions.OpenWorldMap(World);
+ 
++                    break;
++
++                case Buttons.Groups:
++                    // UO Offline: opens the server's Group Finder.
++                    GameActions.Say("[groups");
++
+                     break;
+             }
+         }
+@@ -495,6 +506,7 @@ namespace ClassicUO.Game.UI.Gumps
+             Debug,
+             NetStats,
+             UOStore,
++            Groups,
+         }
+ 
+         private class RighClickableButton : Button
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs b/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs
+new file mode 100644
+index 0000000..999f0e8
+--- /dev/null
++++ b/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs
+@@ -0,0 +1,748 @@
++// SPDX-License-Identifier: BSD-2-Clause
++//
++// UO Offline: the shard's chat window (opened by the top bar's Chat button).
++//
++// The server (ModernUO + the PlayerBots WorldChat) sends every chat line as
++// ordinary speech the journal already receives:
++//   Global / Trade / Whisper   MessageType.Encoded, name "[G] Name" / "[T] .." / "[W] .."
++//   Faction                    MessageType.Alliance
++//   Guild                      MessageType.Guild
++//   News                       MessageType.System, name "News"
++// so this window reads the same journal (JournalManager) and sorts the lines
++// into tabs. A line that offers something (a group to join, an auction lot to
++// view, a buy order to fill) carries a link the server marks for this client
++// (UoOfflineLinks); it is drawn as a button at the end of the line and sends
++// the matching command ("[join 12", "[view 38", "[fill 5") when clicked.
++//
++// Resizable like the alternate journal (ResizableGump); size, place and tab
++// are saved with the other gumps (GumpType.WorldChat).
++//
++// The message box along the bottom sends to the active tab's channel (the
++// server's own chat commands: [g, [t, [f, [gu, [w Name; plain speech on All);
++// News is read only. Double-clicking a player's line opens a whisper to them
++// on the Whispers tab ("To Name:", x to stop).
++
++using System;
++using System.Collections.Generic;
++using System.Xml;
++using ClassicUO.Configuration;
++using ClassicUO.Game.Data;
++using ClassicUO.Game.Managers;
++using ClassicUO.Game.Scenes;
++using ClassicUO.Game.UI.Controls;
++using ClassicUO.Input;
++using ClassicUO.Renderer;
++using ClassicUO.Utility.Collections;
++using Microsoft.Xna.Framework;
++
++namespace ClassicUO.Game.UI.Gumps
++{
++    internal enum WorldChatChannel
++    {
++        All,
++        Global,
++        Trade,
++        Faction,
++        Guild,
++        Whisper,
++        News,
++        Other,
++    }
++
++    internal sealed class WorldChatGump : ResizableGump
++    {
++        private const int BORDER_WIDTH = 4;
++        private const int TAB_WIDTH = 74;
++        private const int TAB_HEIGHT = 26;
++        private const int SCROLL_BAR_WIDTH = 14;
++        private const int MIN_HEIGHT = 140;
++        private const int INPUT_HEIGHT = 24;   // the message box along the bottom
++
++        private static readonly (WorldChatChannel channel, string name)[] Tabs =
++        {
++            (WorldChatChannel.All, "All"),
++            (WorldChatChannel.Global, "Global"),
++            (WorldChatChannel.Trade, "Trade"),
++            (WorldChatChannel.Faction, "Faction"),
++            (WorldChatChannel.Guild, "Guild"),
++            (WorldChatChannel.Whisper, "Whispers"),
++            (WorldChatChannel.News, "News"),
++        };
++
++        private static readonly int MIN_WIDTH = BORDER_WIDTH * 2 + TAB_WIDTH * Tabs.Length + 8;
++
++        private static int _lastX = 120, _lastY = 120;
++        private static int _lastWidth = MIN_WIDTH + 40, _lastHeight = 320;
++
++        private readonly AlphaBlendControl _background;
++        private readonly ChatArea _area;
++        private readonly ScrollBar _scrollBar;
++        private readonly NiceButton[] _tabs = new NiceButton[Tabs.Length];
++        private readonly int[] _unread = new int[Tabs.Length];
++        private int _active;
++
++        // The message box: what the active tab sends to (the prompt), the
++        // box itself, and the whisper target (a double-clicked name).
++        private readonly AlphaBlendControl _inputBack;
++        private readonly Label _prompt;
++        private readonly StbTextBox _input;
++        private readonly NiceButton _clearTarget;
++        private string _whisperTo;
++
++        public WorldChatGump(World world) : base(world, _lastWidth, _lastHeight, MIN_WIDTH, MIN_HEIGHT, 0, 0)
++        {
++            CanMove = true;
++            AcceptMouseInput = true;
++            CanCloseWithRightClick = true;
++            X = _lastX;
++            Y = _lastY;
++
++            _background = new AlphaBlendControl(0.7f)
++            {
++                Hue = 0x0000,
++                X = BORDER_WIDTH,
++                Y = BORDER_WIDTH,
++                Width = Width - BORDER_WIDTH * 2,
++                Height = Height - BORDER_WIDTH * 2,
++                CanCloseWithRightClick = true,
++            };
++            _background.DragBegin += (s, e) => InvokeDragBegin(e.Location);
++
++            _scrollBar = new ScrollBar(Width - SCROLL_BAR_WIDTH - BORDER_WIDTH, BORDER_WIDTH + TAB_HEIGHT,
++                Height - TAB_HEIGHT - INPUT_HEIGHT - BORDER_WIDTH * 2);
++
++            _area = new ChatArea(this, BORDER_WIDTH, BORDER_WIDTH + TAB_HEIGHT,
++                Width - SCROLL_BAR_WIDTH - BORDER_WIDTH * 2, Height - BORDER_WIDTH * 2 - TAB_HEIGHT - INPUT_HEIGHT, _scrollBar)
++            {
++                CanCloseWithRightClick = true,
++            };
++            _area.DragBegin += (s, e) => InvokeDragBegin(e.Location);
++
++            _inputBack = new AlphaBlendControl(0.5f) { Hue = 0x0000 };
++            _prompt = new Label("Say:", true, 0x0035, font: 1, style: FontStyle.BlackBorder);
++            _input = new StbTextBox(1, 220, 0, true, FontStyle.BlackBorder, 0x0481)
++            {
++                Height = INPUT_HEIGHT - 6,
++            };
++            _clearTarget = new NiceButton(0, 0, 16, INPUT_HEIGHT - 6, ButtonAction.Activate, "x")
++            {
++                ButtonParameter = ClearTargetButton,
++                IsSelectable = false,
++                IsVisible = false,
++            };
++            _clearTarget.SetTooltip("Stop whispering this player");
++
++            Add(_background);
++            Add(_scrollBar);
++            Add(_area);
++            Add(_inputBack);
++            Add(_prompt);
++            Add(_clearTarget);
++            Add(_input);
++
++            for (int i = 0; i < Tabs.Length; i++)
++            {
++                Add(_tabs[i] = new NiceButton(BORDER_WIDTH + i * TAB_WIDTH, BORDER_WIDTH, TAB_WIDTH, TAB_HEIGHT - 2,
++                    ButtonAction.Activate, Tabs[i].name, 1)
++                {
++                    ButtonParameter = i,
++                    IsSelectable = true,
++                    CanCloseWithRightClick = false,
++                });
++            }
++            _tabs[0].IsSelected = true;
++            LayoutInput();
++            UpdatePrompt();
++
++            foreach (JournalEntry entry in JournalManager.Entries)
++            {
++                if (entry != null)
++                {
++                    Append(entry, countUnread: false);
++                }
++            }
++
++            EventSink.JournalEntryAdded += OnEntryAdded;
++        }
++
++        public override GumpType GumpType => GumpType.WorldChat;
++
++        internal WorldChatChannel ActiveChannel => Tabs[_active].channel;
++
++        private void OnEntryAdded(object sender, JournalEntry e) => Append(e, countUnread: true);
++
++        private void Append(JournalEntry e, bool countUnread)
++        {
++            if (!string.IsNullOrEmpty(e.Name) && World.IgnoreManager.IgnoredCharsList.Contains(e.Name))
++            {
++                return;
++            }
++
++            var channel = ChannelOf(e);
++            _area.Add(e, channel);
++
++            if (!countUnread)
++            {
++                return;
++            }
++            for (int i = 1; i < Tabs.Length; i++)
++            {
++                if (Tabs[i].channel == channel && i != _active)
++                {
++                    _unread[i]++;
++                    UpdateTabLabel(i);
++                }
++            }
++        }
++
++        private void UpdateTabLabel(int i)
++        {
++            _tabs[i].TextLabel.Text = _unread[i] > 0 ? $"{Tabs[i].name} ({Math.Min(_unread[i], 99)})" : Tabs[i].name;
++        }
++
++        // Which tab a journal line belongs to.
++        internal static WorldChatChannel ChannelOf(JournalEntry e)
++        {
++            switch (e.MessageType)
++            {
++                case MessageType.Encoded:
++                    var n = e.Name ?? string.Empty;
++                    if (n.StartsWith("[G]", StringComparison.Ordinal))
++                    {
++                        return WorldChatChannel.Global;
++                    }
++                    if (n.StartsWith("[T]", StringComparison.Ordinal))
++                    {
++                        return WorldChatChannel.Trade;
++                    }
++                    if (n.StartsWith("[W]", StringComparison.Ordinal))
++                    {
++                        return WorldChatChannel.Whisper;
++                    }
++                    return WorldChatChannel.Other;
++                case MessageType.Alliance:
++                    return WorldChatChannel.Faction;
++                case MessageType.Guild:
++                    return WorldChatChannel.Guild;
++                // (TazUO can file system lines as ChatSystem: JournalMessageClassifier)
++                case MessageType.System or MessageType.ChatSystem when string.Equals(e.Name, "News", StringComparison.OrdinalIgnoreCase):
++                    return WorldChatChannel.News;
++                default:
++                    return WorldChatChannel.Other;
++            }
++        }
++
++        private const int ClearTargetButton = 1000;
++
++        public override void OnButtonClick(int buttonID)
++        {
++            if (buttonID == ClearTargetButton)
++            {
++                _whisperTo = null;
++                UpdatePrompt();
++                return;
++            }
++            if (buttonID < 0 || buttonID >= Tabs.Length)
++            {
++                return;
++            }
++            _active = buttonID;
++            _tabs[buttonID].IsSelected = true;
++            _unread[buttonID] = 0;
++            UpdateTabLabel(buttonID);
++            _area.Refilter();
++            UpdatePrompt();
++        }
++
++        // -------------------------------------------------------------------
++        // The message box. The active tab picks the channel; the line goes
++        // to the server as the chat command for it, the same ones a player
++        // can type anywhere ([g, [t, [f, [gu, [w Name), and plain speech on
++        // the All tab. News is read only.
++        // -------------------------------------------------------------------
++        private void UpdatePrompt()
++        {
++            var channel = ActiveChannel;
++            _prompt.Text = channel switch
++            {
++                WorldChatChannel.Global => "Global:",
++                WorldChatChannel.Trade => "Trade:",
++                WorldChatChannel.Faction => "Faction:",
++                WorldChatChannel.Guild => "Guild:",
++                WorldChatChannel.Whisper => _whisperTo != null ? $"To {_whisperTo}:" : "Whisper (name, then message):",
++                WorldChatChannel.News => "News is read only",
++                _ => "Say:",
++            };
++            _input.IsEditable = channel != WorldChatChannel.News;
++            _input.IsVisible = channel != WorldChatChannel.News;
++            _clearTarget.IsVisible = channel == WorldChatChannel.Whisper && _whisperTo != null;
++            LayoutInput();
++        }
++
++        private void LayoutInput()
++        {
++            int y = Height - BORDER_WIDTH - INPUT_HEIGHT;
++            _inputBack.X = BORDER_WIDTH;
++            _inputBack.Y = y;
++            _inputBack.Width = Width - BORDER_WIDTH * 2;
++            _inputBack.Height = INPUT_HEIGHT;
++
++            _prompt.X = BORDER_WIDTH + 4;
++            _prompt.Y = y + (INPUT_HEIGHT - _prompt.Height) / 2;
++
++            int x = _prompt.X + _prompt.Width + 4;
++            if (_clearTarget.IsVisible)
++            {
++                _clearTarget.X = x;
++                _clearTarget.Y = y + 3;
++                x += _clearTarget.Width + 4;
++            }
++            _input.X = x;
++            _input.Y = y + 4;
++            _input.Width = Math.Max(40, Width - BORDER_WIDTH - 4 - x);
++        }
++
++        public override void OnKeyboardReturn(int textID, string text)
++        {
++            text = text?.Trim();
++            if (string.IsNullOrEmpty(text))
++            {
++                return;
++            }
++            string line = ActiveChannel switch
++            {
++                WorldChatChannel.Global => "[g " + text,
++                WorldChatChannel.Trade => "[t " + text,
++                WorldChatChannel.Faction => "[f " + text,
++                WorldChatChannel.Guild => "[gu " + text,
++                WorldChatChannel.Whisper => _whisperTo != null ? $"[w {_whisperTo} {text}" : "[w " + text,
++                WorldChatChannel.News => null,
++                _ => text, // the All tab: said out loud (commands and , prefixes work as usual)
++            };
++            if (line != null)
++            {
++                GameActions.Say(line);
++            }
++            _input.SetText(string.Empty);
++        }
++
++        // A double-clicked line: whisper whoever said it.
++        internal void WhisperTo(string name)
++        {
++            if (string.IsNullOrWhiteSpace(name) ||
++                string.Equals(name, World.Player?.Name, StringComparison.OrdinalIgnoreCase))
++            {
++                return;
++            }
++            _whisperTo = name;
++            for (int i = 0; i < Tabs.Length; i++)
++            {
++                if (Tabs[i].channel == WorldChatChannel.Whisper)
++                {
++                    OnButtonClick(i);
++                    break;
++                }
++            }
++            _input.SetKeyboardFocus();
++        }
++
++        // Who said a chat line, from the name the journal gave it: "[G] Bob",
++        // "[W] to Bob" (your own whisper), "[Alliance][Bob]", "[Guild][Bob]".
++        internal static string SenderOf(string name, WorldChatChannel channel)
++        {
++            if (string.IsNullOrEmpty(name) || channel is WorldChatChannel.News or WorldChatChannel.Other or WorldChatChannel.All)
++            {
++                return null;
++            }
++            if (channel is WorldChatChannel.Faction or WorldChatChannel.Guild)
++            {
++                int open = name.LastIndexOf('[');
++                int close = name.LastIndexOf(']');
++                return open >= 0 && close > open + 1 ? name.Substring(open + 1, close - open - 1).Trim() : name.Trim();
++            }
++            int cut = name.IndexOf("] ", StringComparison.Ordinal);
++            var who = cut >= 0 ? name.Substring(cut + 2).Trim() : name.Trim();
++            if (who.StartsWith("to ", StringComparison.Ordinal))
++            {
++                who = who.Substring(3).Trim();
++            }
++            return who.Length > 0 ? who : null;
++        }
++
++        public override void OnMouseWheel(MouseEventType delta)
++        {
++            base.OnMouseWheel(delta);
++            _scrollBar?.InvokeMouseWheel(delta);
++        }
++
++        public override void Update()
++        {
++            base.Update();
++
++            if (IsDisposed)
++            {
++                return;
++            }
++
++            _lastX = X;
++            _lastY = Y;
++
++            if ((Width != _lastWidth || Height != _lastHeight) && !Mouse.LButtonPressed)
++            {
++                Reposition();
++            }
++        }
++
++        private void Reposition()
++        {
++            _lastWidth = Width;
++            _lastHeight = Height;
++
++            _background.Width = Width - BORDER_WIDTH * 2;
++            _background.Height = Height - BORDER_WIDTH * 2;
++
++            _area.X = BORDER_WIDTH;
++            _area.Y = BORDER_WIDTH + TAB_HEIGHT;
++            _area.Width = Width - SCROLL_BAR_WIDTH - BORDER_WIDTH * 2;
++            _area.Height = Height - BORDER_WIDTH * 2 - TAB_HEIGHT - INPUT_HEIGHT;
++
++            _scrollBar.X = Width - SCROLL_BAR_WIDTH - BORDER_WIDTH;
++            _scrollBar.Y = _area.Y;
++            _scrollBar.Height = _area.Height;
++
++            LayoutInput();
++        }
++
++        public override void Save(XmlTextWriter writer)
++        {
++            base.Save(writer);
++            writer.WriteAttributeString("rw", Width.ToString());
++            writer.WriteAttributeString("rh", Height.ToString());
++            writer.WriteAttributeString("tab", _active.ToString());
++        }
++
++        public override void Restore(XmlElement xml)
++        {
++            base.Restore(xml);
++
++            var size = new Point(Width, Height);
++            if (int.TryParse(xml.GetAttribute("rw"), out int w) && w > 0)
++            {
++                size.X = w;
++            }
++            if (int.TryParse(xml.GetAttribute("rh"), out int h) && h > 0)
++            {
++                size.Y = h;
++            }
++            ResizeWindow(size);
++
++            if (int.TryParse(xml.GetAttribute("tab"), out int tab))
++            {
++                OnButtonClick(tab);
++            }
++        }
++
++        public override void Dispose()
++        {
++            EventSink.JournalEntryAdded -= OnEntryAdded;
++            base.Dispose();
++        }
++
++        // Open it, or bring it to the front if it is open.
++        public static void Toggle(World world)
++        {
++            var gump = UIManager.GetGump<WorldChatGump>();
++            if (gump == null)
++            {
++                UIManager.Add(new WorldChatGump(world));
++            }
++            else
++            {
++                gump.SetInScreen();
++                gump.BringOnTop();
++            }
++        }
++
++        // -------------------------------------------------------------------
++        // The lines: the journal's own drawing (ResizableJournal), plus a
++        // link button at the end of a line that has one.
++        // -------------------------------------------------------------------
++        private sealed class ChatArea : Control
++        {
++            private const int LinkGap = 6;
++            private const ushort LinkHue = 0x0035;
++
++            private readonly WorldChatGump _owner;
++            private readonly ScrollBarBase _scrollBar;
++            private readonly Deque<Row> _rows = new Deque<Row>();
++            private readonly List<(Rectangle area, string command)> _hits = new List<(Rectangle, string)>();
++            private readonly List<(Rectangle area, string sender)> _lines = new List<(Rectangle, string)>();
++            private int _lastWidth, _lastHeight;
++
++            public ChatArea(WorldChatGump owner, int x, int y, int width, int height, ScrollBarBase scrollBar)
++            {
++                _owner = owner;
++                _scrollBar = scrollBar;
++                _scrollBar.IsVisible = false;
++                AcceptMouseInput = true;
++                CanMove = true;
++                X = x;
++                Y = y;
++                Width = _lastWidth = width;
++                Height = _lastHeight = height;
++                WantUpdateSize = false;
++            }
++
++            private bool Shows(Row r) =>
++                _owner.ActiveChannel == WorldChatChannel.All || r.Channel == _owner.ActiveChannel;
++
++            public void Add(JournalEntry e, WorldChatChannel channel)
++            {
++                bool atBottom = _scrollBar.Value == _scrollBar.MaxValue;
++
++                while (_rows.Count >= Constants.MAX_JOURNAL_HISTORY_COUNT)
++                {
++                    _rows.RemoveFromFront().Destroy();
++                }
++
++                var row = new Row
++                {
++                    Channel = channel,
++                    Source = string.IsNullOrEmpty(e.Name) ? e.Text : $"{e.Name}: {e.Text}",
++                    Unicode = e.IsUnicode,
++                    Hue = e.Hue,
++                    Font = e.Font,
++                    Time = new Label($"{e.Time:t}", e.IsUnicode, e.Hue, font: e.Font),
++                    Sender = SenderOf(e.Name, channel),
++                };
++                if (!string.IsNullOrEmpty(e.Link))
++                {
++                    row.Command = "[" + e.Link;
++                    row.LinkLabel = new Label($"[{UoOfflineLinks.Label(e.Link)}]", true, LinkHue, font: 1,
++                        style: FontStyle.BlackBorder);
++                }
++                row.Layout(Width);
++                _rows.AddToBack(row);
++
++                CalculateScrollBarMaxValue();
++                if (atBottom)
++                {
++                    _scrollBar.Value = _scrollBar.MaxValue;
++                }
++            }
++
++            public void Refilter()
++            {
++                CalculateScrollBarMaxValue();
++                _scrollBar.Value = _scrollBar.MaxValue;
++            }
++
++            public override void Update()
++            {
++                base.Update();
++                if (!IsVisible)
++                {
++                    return;
++                }
++
++                _scrollBar.IsVisible = _scrollBar.MaxValue > _scrollBar.MinValue;
++                if (Width != _lastWidth || Height != _lastHeight)
++                {
++                    _lastWidth = Width;
++                    _lastHeight = Height;
++                    foreach (var r in _rows)
++                    {
++                        r.Layout(Width);
++                    }
++                    CalculateScrollBarMaxValue();
++                }
++            }
++
++            private void CalculateScrollBarMaxValue()
++            {
++                bool atBottom = _scrollBar.Value == _scrollBar.MaxValue;
++                int height = 0;
++                foreach (var r in _rows)
++                {
++                    if (Shows(r))
++                    {
++                        height += r.Height;
++                    }
++                }
++                height -= _scrollBar.Height;
++                if (height > 0)
++                {
++                    _scrollBar.MaxValue = height;
++                    if (atBottom)
++                    {
++                        _scrollBar.Value = _scrollBar.MaxValue;
++                    }
++                }
++                else
++                {
++                    _scrollBar.MaxValue = 0;
++                    _scrollBar.Value = 0;
++                }
++            }
++
++            public override bool Draw(UltimaBatcher2D batcher, int x, int y)
++            {
++                base.Draw(batcher, x, y);
++                _hits.Clear();
++                _lines.Clear();
++                if (!batcher.ClipBegin(x, y, Width, Height))
++                {
++                    return true;
++                }
++                int my = y;
++                foreach (var r in _rows)
++                {
++                    if (!Shows(r) || r.Text == null)
++                    {
++                        continue;
++                    }
++                    int top = my - _scrollBar.Value;
++                    if (my + r.Height - y >= _scrollBar.Value && my - y <= _scrollBar.Value + _scrollBar.Height)
++                    {
++                        r.Time.Draw(batcher, x, top);
++                        if (r.Sender != null)
++                        {
++                            _lines.Add((new Rectangle(0, top - y, Width, r.Height), r.Sender));
++                        }
++                        r.Text.Draw(batcher, x + r.Time.Width + 5, top);
++                        if (r.LinkLabel != null)
++                        {
++                            int lx = x + Width - r.LinkLabel.Width - 2;
++                            r.LinkLabel.Draw(batcher, lx, top);
++                            _hits.Add((new Rectangle(lx - x, top - y, r.LinkLabel.Width, r.LinkLabel.Height), r.Command));
++                        }
++                    }
++                    my += r.Height;
++                }
++                batcher.ClipEnd();
++                return true;
++            }
++
++            public override void OnMouseUp(int x, int y, MouseButtonType button)
++            {
++                if (button == MouseButtonType.Left)
++                {
++                    foreach (var (area, command) in _hits)
++                    {
++                        if (area.Contains(x, y))
++                        {
++                            GameActions.Say(command);
++                            return;
++                        }
++                    }
++                }
++                base.OnMouseUp(x, y, button);
++            }
++
++            // Double-click a player's line: whisper them.
++            public override bool OnMouseDoubleClick(int x, int y, MouseButtonType button)
++            {
++                if (button == MouseButtonType.Left)
++                {
++                    foreach (var (area, sender) in _lines)
++                    {
++                        if (area.Contains(x, y))
++                        {
++                            _owner.WhisperTo(sender);
++                            return true;
++                        }
++                    }
++                }
++                return base.OnMouseDoubleClick(x, y, button);
++            }
++
++            public override void Dispose()
++            {
++                foreach (var r in _rows)
++                {
++                    r.Destroy();
++                }
++                _rows.Clear();
++                base.Dispose();
++            }
++
++            private sealed class Row
++            {
++                public WorldChatChannel Channel;
++                public string Source;
++                public bool Unicode;
++                public ushort Hue;
++                public byte Font;
++                public Label Time;
++                public Label Text;
++                public Label LinkLabel;
++                public string Command;
++                public string Sender;
++
++                public int Height => Math.Max(Text?.Height ?? 0, LinkLabel?.Height ?? 0);
++
++                public void Layout(int width)
++                {
++                    Text?.Dispose();
++                    int room = width - BORDER_WIDTH - Time.Width - 5 - (LinkLabel != null ? LinkLabel.Width + LinkGap : 0);
++                    Text = new Label(Source, Unicode, Hue, Math.Max(40, room), font: Font);
++                }
++
++                public void Destroy()
++                {
++                    Text?.Dispose();
++                    Time?.Dispose();
++                    LinkLabel?.Dispose();
++                }
++            }
++        }
++    }
++
++    // -----------------------------------------------------------------------
++    // The server's link marker: a chat line that offers something ends in
++    // "{{link join 12}}" (sent only to this client, which says so at login
++    // with "[uoclient"). MessageManager strips it before the line goes
++    // anywhere, so the journal and overhead text never show it; the journal
++    // entry keeps "join 12" (JournalEntry.Link) for the chat window.
++    // -----------------------------------------------------------------------
++    internal static class UoOfflineLinks
++    {
++        private const string Open = "{{link ";
++        private const string Close = "}}";
++
++        public const string Hello = "[uoclient 1";
++
++        // The link ("join 12") cut off the end of the text, or null.
++        public static string Extract(ref string text)
++        {
++            if (string.IsNullOrEmpty(text))
++            {
++                return null;
++            }
++            int start = text.LastIndexOf(Open, StringComparison.Ordinal);
++            if (start < 0 || !text.EndsWith(Close, StringComparison.Ordinal))
++            {
++                return null;
++            }
++            string link = text.Substring(start + Open.Length, text.Length - start - Open.Length - Close.Length).Trim();
++            int space = link.IndexOf(' ');
++            if (space <= 0 || !int.TryParse(link.Substring(space + 1), out _))
++            {
++                return null;
++            }
++            string verb = link.Substring(0, space);
++            if (verb != "join" && verb != "view" && verb != "fill")
++            {
++                return null;
++            }
++            text = text.Substring(0, start).TrimEnd();
++            return link;
++        }
++
++        public static string Label(string link) =>
++            link.StartsWith("join", StringComparison.Ordinal) ? "Join"
++            : link.StartsWith("view", StringComparison.Ordinal) ? "View"
++            : link.StartsWith("fill", StringComparison.Ordinal) ? "Fill"
++            : "Open";
++    }
++}
+diff --git a/src/ClassicUO.Client/Network/PacketHandlers/LoginComplete.cs b/src/ClassicUO.Client/Network/PacketHandlers/LoginComplete.cs
+index de542cc..72b8158 100644
+--- a/src/ClassicUO.Client/Network/PacketHandlers/LoginComplete.cs
++++ b/src/ClassicUO.Client/Network/PacketHandlers/LoginComplete.cs
+@@ -33,6 +33,9 @@ internal static class LoginComplete
+             if (Client.Game.UO.Version >= ClassicUO.Utility.ClientVersion.CV_305D)
+                 AsyncNetClient.Socket.Send_ClientViewRange(world.ClientViewRange);
+ 
++            // UO Offline: tell the server this client draws chat links.
++            GameActions.Say(UoOfflineLinks.Hello);
++
+             // Reset the global action cooldown here because, for some reason, immediately
+             // sending multiple actions (e.g. reopening paperdoll and reopening containers)
+             // results in the server telling the client it must wait to perform actions.
