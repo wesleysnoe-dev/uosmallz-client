@@ -1,0 +1,13 @@
+{
+  "username": "",
+  "password": "",
+  "ip": "uosmallz.duckdns.org",
+  "port": 2593,
+  "ultimaonlinedirectory": "C:/path/to/your/UO",
+  "clientversion": "7.0.23.1",
+  "lastservernum": 1,
+  "encryption": 0,
+  "saveaccount": false,
+  "autologin": false,
+  "plugins": []
+}
