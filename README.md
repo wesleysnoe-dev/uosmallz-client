@@ -12,7 +12,8 @@ WINDOWS (easy way)
   4. Double-click "UO Smallz" on your desktop.
 
 LINUX
-  Run install.sh from the installer zip (needs curl, unzip, 7z).
+  Run install.sh from the installer zip. Needs curl, unzip, python3, p7zip,
+  and unar (or unrar / 7zz). pwsh is optional (for the 2002 map areas).
 
 LOGGING IN
   New player: type any new username and password at the login screen.
@@ -24,6 +25,14 @@ ABOUT THE GAME FILES
   (mirror.ashkantra.de) and checks its SHA256 before using it. If you prefer,
   install UO Classic yourself and give the installer that folder; other
   client versions may show glitches, 7.0.23.1 is the tested one.
+
+CLASSIC MAP
+  The shard uses the classic Felucca map (intact Magincia). The installer
+  downloads the UO Second Age client (~349 MB, uosecondage.com, SHA256
+  checked), copies its map0/statics0/staidx0.mul into your UO folder (the
+  originals go to _backup-modern-map), then map-merge.ps1 adds the 2002
+  areas (Solen hives, faction strongholds, Khaldun). Without this your map
+  will not match the server. Skip it: set INSTALL_CLASSIC_MAP=0.
 
 MANUAL SETUP (no installer)
   Unzip UOSmallz-Client-win-x64.zip (or -linux-x64), then edit settings.json

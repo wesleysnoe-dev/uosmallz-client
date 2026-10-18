@@ -37,6 +37,175 @@ function Find-UOData($roots) {
   return $null
 }
 
+
+# ---------------------------------------------------------------------------
+# Classic Felucca map art: same steps, URL and hash as the UO Offline
+# installer (the UO Smallz server uses these map files, so the client must too).
+# ---------------------------------------------------------------------------
+$InstallT2AMap      = $true
+if ($env:INSTALL_CLASSIC_MAP -eq "0") { $InstallT2AMap = $false }
+$T2AInstallerUrl    = "https://download.uosecondage.com/UOSA_Client_Setup.exe"
+$T2AInstallerSha256 = "674ec3cce9621bd8c1a8f2f69070e64e63191ce73d6f297236bf8f3b89d41ddf"
+$T2AMulFiles        = @("map0.mul", "statics0.mul", "staidx0.mul")
+function Banner($m) { Step $m }
+function Warn($m)   { Write-Host "[warn] $m" -ForegroundColor Yellow }
+function Assert-Pinned($path, $sha, $label) {
+  $got = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower()
+  if ($got -ne $sha) {
+    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    Die "Refusing to use ${label}: SHA256 mismatch. The file was deleted. Re-run to download it again."
+  }
+}
+function Invoke-Native([string]$Exe, [string[]]$Arguments = @()) {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  try { $out = & $Exe @Arguments 2>&1 | ForEach-Object { "$_" } } finally { $ErrorActionPreference = $prev }
+  return $out
+}
+
+function RemoveUosaLeftovers {
+  param([Parameter(Mandatory)][string]$ExtractDir, [switch]$WhatIfOnly)
+
+  $found = @()
+
+  $roots = @(
+    [Environment]::GetFolderPath("Desktop"),
+    [Environment]::GetFolderPath("CommonDesktopDirectory"),
+    [Environment]::GetFolderPath("Programs"),
+    [Environment]::GetFolderPath("CommonPrograms")
+  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
+  $wsh = New-Object -ComObject WScript.Shell
+
+  foreach ($root in $roots) {
+    $links = Get-ChildItem -Path $root -Filter *.lnk -Recurse -ErrorAction SilentlyContinue
+    foreach ($lnk in $links) {
+      $target = $null
+      try { $target = $wsh.CreateShortcut($lnk.FullName).TargetPath } catch { continue }
+      if (-not $target) { continue }
+
+      if ($target.StartsWith($ExtractDir, [StringComparison]::OrdinalIgnoreCase)) {
+        $found += $lnk.FullName
+        if (-not $WhatIfOnly) { Remove-Item $lnk.FullName -Force -ErrorAction SilentlyContinue }
+      }
+    }
+  }
+
+  # Its Start-Menu folder, in whichever profile it landed in. Only if empty
+  # after the shortcuts above went, so a folder holding anything else stays.
+  foreach ($progs in @([Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("CommonPrograms"))) {
+    if (-not $progs) { continue }
+    $dir = Join-Path $progs "Ultima Online"
+    if ((Test-Path $dir) -and -not (Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue)) {
+      $found += $dir
+      if (-not $WhatIfOnly) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+  }
+
+  if ($WhatIfOnly) { return $found }
+
+  foreach ($f in $found) { Say "Removed leftover: $f" }
+
+  # And the client itself. The swap is idempotent through the backup folder
+  # it leaves behind, so nothing needs these files again.
+  if (Test-Path $ExtractDir) {
+    Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Say "Removed the extracted UO Second Age client."
+  }
+
+  Ok "Cleaned up after the UOSA installer ($($found.Count) shortcut(s))."
+}
+
+function SwapT2AMap {
+  Banner "Installing classic Felucca map art (intact Magincia)"
+  if (-not $InstallT2AMap) { Say "The classic map option is off; keeping modern map art."; return }
+  if (-not $script:UOData) { Warn "UO data dir not resolved; skipping the classic map swap."; return }
+
+  $backupDir = Join-Path $script:UOData "_backup-modern-map"
+  if (Test-Path (Join-Path $backupDir "map0.mul")) {
+    Say "Classic map already swapped (modern backup exists). Skipping."
+    return
+  }
+
+  # 1. Obtain the UOSA installer (cached so re-runs don't re-download ~349 MB).
+  New-Item -ItemType Directory -Force -Path $T2ASrcDir | Out-Null
+  $uosaExe = Join-Path $T2ASrcDir "UOSA_Client_Setup.exe"
+  if (-not (Test-Path $uosaExe)) {
+    Say "Downloading UO Second Age client (~349 MB, EA content via uosecondage.com) for its classic map art..."
+    $headers = @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+    Invoke-WebRequest -Uri $T2AInstallerUrl -OutFile $uosaExe -Headers $headers
+  } else { Say "UOSA installer already cached at $uosaExe." }
+  Assert-Pinned $uosaExe $T2AInstallerSha256 "the UO Second Age installer (UOSA_Client_Setup.exe)"
+
+  # 2. Extract the three map files. Prefer 7-Zip (reads the NSIS archive
+  #    directly); fall back to a silent install into a scratch folder.
+  $extractDir = Join-Path $T2ASrcDir "uosa-install"
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+
+  $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+  if (-not $sevenZip) { $sevenZip = Get-Command 7za -ErrorAction SilentlyContinue }
+  if (-not $sevenZip) { $sevenZip = Get-Command (Join-Path $env:ProgramFiles "7-Zip\7z.exe") -ErrorAction SilentlyContinue }
+
+  $haveMuls = $true
+  foreach ($f in $T2AMulFiles) { if (-not (Test-Path (Join-Path $extractDir $f))) { $haveMuls = $false } }
+
+  if (-not $haveMuls) {
+    if ($sevenZip) {
+      Say "Extracting the classic map files with 7-Zip..."
+      Invoke-Native $sevenZip.Source (@("x", "-y", "-o$extractDir", $uosaExe) + $T2AMulFiles) | Out-Null
+    } elseif ($extractDir -match '\s') {
+      Warn "7-Zip not found and the extract path contains spaces (the silent UOSA installer cannot handle that)."
+      Warn "Install 7-Zip from https://www.7-zip.org and re-run, or follow docs/CLASSIC-MAP.md manually. Keeping modern map."
+      return
+    } else {
+      Say "7-Zip not found; running the UOSA installer silently into $extractDir..."
+      # NSIS switches: /S = silent, /D = install dir (must be last, unquoted).
+      Start-Process -FilePath $uosaExe -ArgumentList "/S", "/D=$extractDir" -Wait
+    }
+  }
+
+  # Locate the three muls (a silent install may nest them).
+  $srcMap = @{}
+  foreach ($f in $T2AMulFiles) {
+    $hit = Get-ChildItem -Path $extractDir -Recurse -Filter $f -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($hit) { $srcMap[$f] = $hit.FullName }
+  }
+  foreach ($f in $T2AMulFiles) {
+    if (-not $srcMap.ContainsKey($f)) { Warn "Classic $f not found after extract; aborting swap (modern map kept)."; return }
+  }
+
+  # 3. Back up the modern files (the 3 swapped + radarcol/tiledata for safety).
+  New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+  foreach ($f in @("map0.mul", "statics0.mul", "staidx0.mul", "radarcol.mul", "tiledata.mul")) {
+    $live = Join-Path $script:UOData $f
+    if (Test-Path $live) { Copy-Item $live (Join-Path $backupDir $f) -Force }
+  }
+  Ok "Backed up modern map -> $backupDir"
+
+  # 4. Copy the classic files over the live data dir.
+  foreach ($f in $T2AMulFiles) { Copy-Item $srcMap[$f] (Join-Path $script:UOData $f) -Force }
+
+  # 5. Put away what the UOSA installer left lying about.
+  #
+  # We wanted three map files. Run silently, that installer also lays down a
+  # complete, working UO Second Age client and drops shortcuts on the desktop
+  # for it. People click those, arrive at the real Second Age login server,
+  # and cannot work out why they are not on their own shard.
+  RemoveUosaLeftovers $extractDir
+  Ok "Classic Felucca map art installed (intact Magincia). Revert: copy _backup-modern-map\* back over the data dir."
+
+  # 6. The classic art is the 1998-99 world. Put back the areas Felucca had
+  #    by 2003 (Solen hives, the Minax and Council of Mages strongholds,
+  #    Khaldun's decoration) from the modern backup: tools\map-audit\
+  #    map-merge.ps1, which keeps its own backup (_backup-classic-map).
+  $merge = Join-Path $ScriptDir "map-merge.ps1"
+  if (Test-Path $merge) {
+    Say "Adding the 2002 areas the classic map lacks (Solen hives, faction strongholds, Khaldun)..."
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $merge -DataDir $script:UOData -NoPause
+    if ($LASTEXITCODE -eq 0) { Ok "Solen hives, Minax and Council of Mages strongholds and Khaldun added to the classic map." }
+    else { Warn "The area merge did not run; run map-merge.ps1 -DataDir <your UO folder> later (game closed)." }
+  }
+}
+
 try {
   Write-Host ""
   Write-Host "  UO Smallz installer" -ForegroundColor Yellow
@@ -112,6 +281,11 @@ try {
     Remove-Item -LiteralPath $sfx -Force -ErrorAction SilentlyContinue
   }
   Ok "UO data: $uoData"
+
+  # 2b. Classic map art
+  $script:UOData = $uoData
+  $T2ASrcDir = Join-Path $InstallRoot "t2a-src"
+  SwapT2AMap
 
   # 3. Settings
   Step "Client settings"
