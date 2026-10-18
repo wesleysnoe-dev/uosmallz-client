@@ -200,6 +200,44 @@ $r = @(Merge-ClientSettings $sp $defaults)
 Check ($r[0] -eq "(new file)" -and @(Get-ChildItem $root -Filter "settings.json.unreadable-*").Count -eq 1) "settings: unreadable file backed up, defaults written"
 Remove-Item $root -Recurse -Force
 
+# ---- download with timeouts (local one-shot HTTP server in a job) ----
+function Start-OneShotServer([int]$port, [string]$body, [int]$sleepAfterSec) {
+    return Start-Job -ArgumentList $port, $body, $sleepAfterSec -ScriptBlock {
+        param($port, $body, $sleepAfterSec)
+        $l = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $port)
+        $l.Start()
+        $c = $l.AcceptTcpClient()
+        $st = $c.GetStream()
+        $buf = New-Object byte[] 4096; [void]$st.Read($buf, 0, 4096)
+        $bytes = [Text.Encoding]::ASCII.GetBytes($body)
+        $len = $bytes.Length
+        if ($sleepAfterSec -gt 0) { $len = $bytes.Length + 1000 }   # promise more than we send
+        $hdr = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $len`r`nConnection: close`r`n`r`n")
+        $st.Write($hdr, 0, $hdr.Length); $st.Write($bytes, 0, $bytes.Length); $st.Flush()
+        if ($sleepAfterSec -gt 0) { Start-Sleep -Seconds $sleepAfterSec }
+        $c.Close(); $l.Stop()
+    }
+}
+$root = New-Root
+$port = Get-Random -Minimum 20000 -Maximum 40000
+$job = Start-OneShotServer $port "hello" 0
+Start-Sleep -Milliseconds 1500
+$out = Join-Path $root "dl.bin"
+try { Save-UrlWithTimeout "http://127.0.0.1:$port/x" $out 5 5 60; $ok = (Read-F $out) -eq "hello" } catch { $ok = $false; Write-Host $_ }
+Check $ok "download: complete file saved"
+Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force
+$port++
+$job = Start-OneShotServer $port "partial" 15
+Start-Sleep -Milliseconds 1500
+$out = Join-Path $root "stall.bin"
+$sw = [Diagnostics.Stopwatch]::StartNew()
+$threw = $false; try { Save-UrlWithTimeout "http://127.0.0.1:$port/x" $out 5 2 60 } catch { $threw = $true }
+$sw.Stop()
+Check ($threw -and $sw.Elapsed.TotalSeconds -lt 10) "download: stall times out ($([int]$sw.Elapsed.TotalSeconds) s)"
+Check (-not (Test-Path -LiteralPath $out)) "download: partial file removed after a stall"
+Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force
+Remove-Item $root -Recurse -Force
+
 Write-Host ""
 Write-Host "$script:pass passed, $script:fail failed"
 exit $script:fail

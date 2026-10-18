@@ -29,6 +29,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+# GitHub needs TLS 1.2; old .NET defaults on Windows PowerShell 5.1 may not
+# offer it, and the check would then fail silently forever.
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch { }
 
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
     $InstallRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -162,6 +167,38 @@ function Get-LatestRelease {
         } catch { $sums = $null }
     }
     return Get-UpdateInfo $r $sums
+}
+
+# Download $url to $out with real timeouts: $ConnectSec to get a response,
+# $StallSec without a single byte arriving, $TotalSec overall. On any
+# failure the partial file is deleted and the error is thrown.
+function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, [int]$StallSec = 30, [int]$TotalSec = 1800) {
+    $resp = $null; $in = $null; $fs = $null
+    try {
+        $req = [Net.HttpWebRequest]::Create($url)
+        $req.UserAgent = "UOSmallz-launcher"
+        $req.AllowAutoRedirect = $true
+        $req.Timeout = $ConnectSec * 1000
+        $req.ReadWriteTimeout = $StallSec * 1000
+        $resp = $req.GetResponse()
+        $in = $resp.GetResponseStream()
+        $fs = [IO.File]::Create($out)
+        $buf = New-Object byte[] 65536
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+            $fs.Write($buf, 0, $n)
+            if ($sw.Elapsed.TotalSeconds -gt $TotalSec) { throw "download took longer than $TotalSec s" }
+        }
+    } catch {
+        $err = $_
+        if ($fs) { try { $fs.Dispose() } catch { }; $fs = $null }
+        Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+        throw $err
+    } finally {
+        if ($fs) { $fs.Dispose() }
+        if ($in) { $in.Dispose() }
+        if ($resp) { $resp.Dispose() }
+    }
 }
 
 # ---- file checks ---------------------------------------------------------
@@ -423,7 +460,7 @@ function Invoke-Launcher([string]$root) {
         $busy = $null
         try {
             $busy = Show-Busy "Downloading UO Smallz client $($info.Tag)..."
-            Invoke-WebRequest -Uri $info.Url -OutFile $zip -Headers @{ "User-Agent" = "UOSmallz-launcher" } -UseBasicParsing
+            Save-UrlWithTimeout $info.Url $zip
             if ($busy) { $busy.Close(); $busy = $null }
             Install-ClientUpdate $root $zip $info.Sha256 $info.Tag
             Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256))"

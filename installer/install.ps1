@@ -265,7 +265,7 @@ try {
   if (-not $zip) {
     $zip = Join-Path $InstallRoot "UOSmallz-Client-win-x64.zip"
     Say "Downloading the client (~85 MB)..."
-    Get-File $clientUrl $zip
+    Save-UrlWithTimeout $clientUrl $zip
     if (-not (Test-Sha256 $zip $clientSha)) {
       Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
       Die "The client download did not match its SHA256. It was deleted; nothing was changed. Try again later."
