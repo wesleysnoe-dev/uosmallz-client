@@ -3,7 +3,8 @@ UO Smallz client - notices
 
 The game client in this package is TazUO (https://github.com/PlayTazUO/TazUO),
 a fork of ClassicUO, built from commit 7deed693c3015c1e8b491006a6540f3a2b630471
-with small UO Smallz changes (a shard chat window and a Groups button).
+with small UO Smallz changes (a shard chat window, Enter to type in it,
+and a Groups button).
 The full source of those changes is in uosmallz-tazuo-changes.patch
 (apply it to that TazUO commit with "git apply").
 

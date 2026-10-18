@@ -943,3 +943,155 @@ index de542cc..72b8158 100644
              // Reset the global action cooldown here because, for some reason, immediately
              // sending multiple actions (e.g. reopening paperdoll and reopening containers)
              // results in the server telling the client it must wait to perform actions.
+diff --git a/src/ClassicUO.Client/Game/Scenes/GameSceneInputHandler.cs b/src/ClassicUO.Client/Game/Scenes/GameSceneInputHandler.cs
+index 3c8ba65..88b194d 100644
+--- a/src/ClassicUO.Client/Game/Scenes/GameSceneInputHandler.cs
++++ b/src/ClassicUO.Client/Game/Scenes/GameSceneInputHandler.cs
+@@ -1372,6 +1372,36 @@ namespace ClassicUO.Game.Scenes
+                 _world.TargetManager.CancelTarget();
+             }
+ 
++            // UO Offline: Esc in the chat window's Say box gives the keyboard back.
++            if (key == SDL.SDL_Keycode.SDLK_ESCAPE && WorldChatGump.ReleaseInputFocus())
++            {
++                return;
++            }
++
++            // UO Offline: Enter and the chat window's Say box. Both one-shot flags are
++            // read and cleared here, before any early return, on every Enter, so neither
++            // can outlive the key press that set it.
++            if (key == SDL.SDL_Keycode.SDLK_RETURN || key == SDL.SDL_Keycode.SDLK_KP_ENTER)
++            {
++                bool releasedSay = WorldChatGump.ConsumeReleasedOnReturn();
++                bool sentLine = UIManager.SystemChat != null && UIManager.SystemChat.SentOnLastReturn;
++
++                if (UIManager.SystemChat != null)
++                {
++                    UIManager.SystemChat.SentOnLastReturn = false;
++                }
++
++                if (releasedSay)
++                {
++                    return; // this Enter just left the Say box: don't reopen it or toggle system chat
++                }
++
++                if (!sentLine && WorldChatGump.TakeEnter())
++                {
++                    return;
++                }
++            }
++
+             if (UIManager.KeyboardFocusControl != UIManager.SystemChat.TextBoxControl)
+             {
+                 return;
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/SystemChatControl.cs b/src/ClassicUO.Client/Game/UI/Gumps/SystemChatControl.cs
+index 5acdde8..f3b252d 100644
+--- a/src/ClassicUO.Client/Game/UI/Gumps/SystemChatControl.cs
++++ b/src/ClassicUO.Client/Game/UI/Gumps/SystemChatControl.cs
+@@ -210,6 +210,9 @@ namespace ClassicUO.Game.UI.Gumps
+ 
+         public readonly StbTextBox TextBoxControl;
+ 
++        // UO Offline: set by OnKeyboardReturn, read and cleared by GameScene's Enter.
++        internal bool SentOnLastReturn;
++
+         public void SetFocus()
+         {
+             UIManager.KeyboardFocusControl = null;
+@@ -600,6 +603,10 @@ namespace ClassicUO.Game.UI.Gumps
+ 
+         public override void OnKeyboardReturn(int textID, string text)
+         {
++            // UO Offline: tell GameScene this Enter already sent a line, so it
++            // does not also hand the Enter to the chat window (WorldChatGump).
++            SentOnLastReturn = !string.IsNullOrEmpty(text);
++
+             if (!IsActive && ProfileManager.CurrentProfile.ActivateChatAfterEnter || Mode != ChatMode.Default && string.IsNullOrEmpty(text))
+             {
+                 TextBoxControl.ClearText();
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs b/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs
+index 999f0e8..128d77f 100644
+--- a/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs
++++ b/src/ClassicUO.Client/Game/UI/Gumps/WorldChatGump.cs
+@@ -307,6 +307,10 @@ namespace ClassicUO.Game.UI.Gumps
+             text = text?.Trim();
+             if (string.IsNullOrEmpty(text))
+             {
++                // An empty Enter gives the keyboard back to the game (system chat),
++                // like an empty Enter in stock chat with activate-chat-after-Enter.
++                UIManager.RestoreSystemChatFocus();
++                _releasedOnReturn = true; // GameScene sees this same Enter next: swallow it there
+                 return;
+             }
+             string line = ActiveChannel switch
+@@ -326,6 +330,62 @@ namespace ClassicUO.Game.UI.Gumps
+             _input.SetText(string.Empty);
+         }
+ 
++        // Enter from the game (GameScene, the keyboard resting on system chat):
++        // focus the Say box when this window is open and can take text.
++        // System chat that the player opened and is typing in keeps the Enter.
++        internal static bool TakeEnter()
++        {
++            if (Keyboard.Shift)
++            {
++                return false; // Shift+Enter keeps stock behaviour (shift-enter support)
++            }
++            var gump = UIManager.GetGump<WorldChatGump>();
++            if (gump == null || gump.IsDisposed || !gump.IsVisible || !gump._input.IsVisible || !gump._input.IsEditable)
++            {
++                return false;
++            }
++            var chat = UIManager.SystemChat;
++            if (UIManager.KeyboardFocusControl != null && (chat == null || UIManager.KeyboardFocusControl != chat.TextBoxControl))
++            {
++                return false; // another text box (or the Say box itself) has the keyboard
++            }
++            if (chat != null && UIManager.KeyboardFocusControl == chat.TextBoxControl)
++            {
++                if (!string.IsNullOrEmpty(chat.TextBoxControl.Text))
++                {
++                    return false;
++                }
++                if (ProfileManager.CurrentProfile.ActivateChatAfterEnter && chat.IsActive)
++                {
++                    return false; // stock closes the open system chat line
++                }
++            }
++            gump._input.SetKeyboardFocus();
++            return true;
++        }
++
++        private static bool _releasedOnReturn;
++
++        // Read and clear the "this Enter just left the Say box" flag (GameScene, every Enter).
++        internal static bool ConsumeReleasedOnReturn()
++        {
++            bool released = _releasedOnReturn;
++            _releasedOnReturn = false;
++            return released;
++        }
++
++        // Esc while the Say box has the keyboard: hand it back to system chat.
++        internal static bool ReleaseInputFocus()
++        {
++            var gump = UIManager.GetGump<WorldChatGump>();
++            if (gump == null || UIManager.KeyboardFocusControl != gump._input)
++            {
++                return false;
++            }
++            UIManager.RestoreSystemChatFocus();
++            return true;
++        }
++
+         // A double-clicked line: whisper whoever said it.
+         internal void WhisperTo(string name)
+         {
+@@ -444,6 +504,7 @@ namespace ClassicUO.Game.UI.Gumps
+ 
+         public override void Dispose()
+         {
++            _releasedOnReturn = false; // never carried past this window
+             EventSink.JournalEntryAdded -= OnEntryAdded;
+             base.Dispose();
+         }

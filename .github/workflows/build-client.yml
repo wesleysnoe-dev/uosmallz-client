@@ -1,0 +1,174 @@
+# Builds the UO Smallz client and publishes it as a versioned release.
+#
+# TazUO (a ClassicUO fork) at the pinned commit (patches/client/TAZUO_COMMIT)
+# with patches/client/*.patch applied in name order, built the way TazUO
+# builds its releases (dotnet publish of ClassicUO.Client -> TazUO.exe).
+# Mirrors uo-offline-dev's .github/workflows/build-client.yml.
+#
+# The release tag is "v" + CLIENT_VERSION (v2, v3, ...). It is marked latest,
+# which is what the launcher (update-check.ps1) and install.ps1 read:
+#   UOSmallz-Client-win-x64.zip, UOSmallz-Client-linux-x64.zip,
+#   UOSmallz-Installer-win.zip (installer/ + notices/ + README), SHA256SUMS.txt
+#
+# To ship a new client: change patches/client and bump CLIENT_VERSION in the
+# same push to main (or run it from the Actions tab). A tag that already
+# exists is never overwritten: the run fails and asks for a bump, so a
+# player's installed version always names exactly one build.
+name: Build UO Smallz client
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "patches/**"
+      - "CLIENT_VERSION"
+      - ".github/workflows/build-client.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-client
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  version:
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      tazuo: ${{ steps.v.outputs.tazuo }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release tag from CLIENT_VERSION
+        id: v
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver="$(tr -d '[:space:]' < CLIENT_VERSION)"
+          if ! [[ "$ver" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::CLIENT_VERSION must be a number like 2 or 2.1 (got '$ver')"; exit 1
+          fi
+          tag="v$ver"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists. Bump CLIENT_VERSION to publish a new client."; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "tazuo=$(tr -d '[:space:]' < patches/client/TAZUO_COMMIT)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: win-x64
+          - os: ubuntu-22.04
+            target: linux-x64
+    steps:
+      # Windows runners check out with CRLF; the patches are LF.
+      - name: Keep line endings as they are
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - name: This repo (the patches)
+        uses: actions/checkout@v5
+        with:
+          path: smallz
+
+      - name: TazUO source
+        uses: actions/checkout@v5
+        with:
+          repository: PlayTazUO/TazUO
+          ref: ${{ needs.version.outputs.tazuo }}
+          path: cuo
+          submodules: recursive
+
+      - name: Apply the UO Smallz patches
+        shell: bash
+        run: |
+          cd cuo
+          for p in ../smallz/patches/client/*.patch; do
+            echo "Applying $p"
+            if ! git apply --whitespace=nowarn "$p"; then
+              echo "Plain apply failed; retrying with line endings ignored"
+              git apply --verbose --ignore-whitespace --whitespace=nowarn "$p"
+            fi
+          done
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build the client (TazUO.exe)
+        shell: bash
+        working-directory: cuo
+        run: dotnet publish src/ClassicUO.Client/ClassicUO.Client.csproj -c Release -r ${{ matrix.target }} -o dist
+
+      - name: Notices (license, notice, the full change patch)
+        shell: bash
+        run: |
+          mkdir -p cuo/dist/notices
+          cp smallz/notices/LICENSE-TazUO-ClassicUO.txt smallz/notices/NOTICE.txt cuo/dist/notices/
+          cat smallz/patches/client/*.patch > cuo/dist/notices/uosmallz-tazuo-changes.patch
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path cuo/dist/* -DestinationPath "UOSmallz-Client-${{ matrix.target }}.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.target }}
+          path: UOSmallz-Client-${{ matrix.target }}.zip
+          retention-days: 3
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: smallz
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: client-*
+          merge-multiple: true
+          path: out
+
+      - name: Installer package and SHA256SUMS.txt
+        shell: bash
+        run: |
+          mkdir -p pkg/UOSmallz-Installer
+          cp -r smallz/installer/. pkg/UOSmallz-Installer/
+          cp -r smallz/notices pkg/UOSmallz-Installer/notices
+          cat smallz/patches/client/*.patch > pkg/UOSmallz-Installer/notices/uosmallz-tazuo-changes.patch
+          cp smallz/README.md pkg/UOSmallz-Installer/README.txt
+          (cd pkg && zip -qr ../out/UOSmallz-Installer-win.zip UOSmallz-Installer)
+          cd out
+          sha256sum UOSmallz-Client-win-x64.zip UOSmallz-Client-linux-x64.zip UOSmallz-Installer-win.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish ${{ needs.version.outputs.tag }} (latest)
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.version.outputs.tag }}
+          commit: ${{ github.sha }}
+          name: "UO Smallz client ${{ needs.version.outputs.tag }}"
+          body: |
+            UO Smallz player client ${{ needs.version.outputs.tag }}: TazUO ${{ needs.version.outputs.tazuo }} with the UO Smallz patches (patches/client; full patch in notices/).
+
+            Already installed? Start UO Smallz from its shortcut and choose Update Now. New player: download UOSmallz-Installer-win.zip, unzip, run install.bat.
+          artifacts: "out/UOSmallz-Client-win-x64.zip,out/UOSmallz-Client-linux-x64.zip,out/UOSmallz-Installer-win.zip,out/SHA256SUMS.txt"
+          allowUpdates: false
+          makeLatest: "true"
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
