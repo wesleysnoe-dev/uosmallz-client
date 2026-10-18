@@ -88,7 +88,9 @@ swap_t2a_map() {
   for f in map0.mul statics0.mul staidx0.mul; do cp -f "${src_path[${f}]}" "${UO_DATA}/${f}"; done
   rm -rf "${extract_dir}"
   ok "Classic Felucca map art installed (intact Magincia)."
-  # The 2002 areas (Solen hives, faction strongholds, Khaldun), as on the server.
+  # The 2002-area merge is OFF by default: the server map is the classic swap
+  # without it. UOSMALLZ_MAP_MERGE=1 turns it on (only if the server is merged too).
+  [[ "${UOSMALLZ_MAP_MERGE:-0}" == "1" ]] || return 0
   if command -v pwsh >/dev/null && [[ -f "$here/map-merge.ps1" ]]; then
     pwsh -NoProfile -File "$here/map-merge.ps1" -DataDir "${UO_DATA}" -NoPause && ok "2002 areas merged." || warn "map-merge.ps1 failed."
   else

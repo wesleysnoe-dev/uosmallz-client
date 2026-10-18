@@ -30,9 +30,9 @@ CLASSIC MAP
   The shard uses the classic Felucca map (intact Magincia). The installer
   downloads the UO Second Age client (~349 MB, uosecondage.com, SHA256
   checked), copies its map0/statics0/staidx0.mul into your UO folder (the
-  originals go to _backup-modern-map), then map-merge.ps1 adds the 2002
-  areas (Solen hives, faction strongholds, Khaldun). Without this your map
-  will not match the server. Skip it: set INSTALL_CLASSIC_MAP=0.
+  originals go to _backup-modern-map). This is exactly the server's map;
+  without it your map will not match the server. map-merge.ps1 (2002 areas)
+  is included but off, because the server map is not merged.
 
 MANUAL SETUP (no installer)
   Unzip UOSmallz-Client-win-x64.zip (or -linux-x64), then edit settings.json

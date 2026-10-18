@@ -47,6 +47,10 @@ if ($env:INSTALL_CLASSIC_MAP -eq "0") { $InstallT2AMap = $false }
 $T2AInstallerUrl    = "https://download.uosecondage.com/UOSA_Client_Setup.exe"
 $T2AInstallerSha256 = "674ec3cce9621bd8c1a8f2f69070e64e63191ce73d6f297236bf8f3b89d41ddf"
 $T2AMulFiles        = @("map0.mul", "statics0.mul", "staidx0.mul")
+# The 2002-area merge (map-merge.ps1) is OFF: the UO Smallz server map is the
+# classic swap without the merge, and the client must match it exactly.
+# Turn on (UOSMALLZ_MAP_MERGE=1) only if the server map gets merged too.
+$RunMapMerge        = ($env:UOSMALLZ_MAP_MERGE -eq "1")
 function Banner($m) { Step $m }
 function Warn($m)   { Write-Host "[warn] $m" -ForegroundColor Yellow }
 function Assert-Pinned($path, $sha, $label) {
@@ -159,7 +163,11 @@ function SwapT2AMap {
     } else {
       Say "7-Zip not found; running the UOSA installer silently into $extractDir..."
       # NSIS switches: /S = silent, /D = install dir (must be last, unquoted).
-      Start-Process -FilePath $uosaExe -ArgumentList "/S", "/D=$extractDir" -Wait
+      # RunAsInvoker: no UAC prompt; it only needs to write into $extractDir.
+      $prevCompat = $env:__COMPAT_LAYER
+      $env:__COMPAT_LAYER = "RunAsInvoker"
+      try { Start-Process -FilePath $uosaExe -ArgumentList "/S", "/D=$extractDir" -Wait }
+      finally { $env:__COMPAT_LAYER = $prevCompat }
     }
   }
 
@@ -198,7 +206,7 @@ function SwapT2AMap {
   #    Khaldun's decoration) from the modern backup: tools\map-audit\
   #    map-merge.ps1, which keeps its own backup (_backup-classic-map).
   $merge = Join-Path $ScriptDir "map-merge.ps1"
-  if (Test-Path $merge) {
+  if ($RunMapMerge -and (Test-Path $merge)) {
     Say "Adding the 2002 areas the classic map lacks (Solen hives, faction strongholds, Khaldun)..."
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $merge -DataDir $script:UOData -NoPause
     if ($LASTEXITCODE -eq 0) { Ok "Solen hives, Minax and Council of Mages strongholds and Khaldun added to the classic map." }
