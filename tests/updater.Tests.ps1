@@ -200,6 +200,57 @@ $r = @(Merge-ClientSettings $sp $defaults)
 Check ($r[0] -eq "(new file)" -and @(Get-ChildItem $root -Filter "settings.json.unreadable-*").Count -eq 1) "settings: unreadable file backed up, defaults written"
 Remove-Item $root -Recurse -Force
 
+# ---- startup recovery (Repair-ClientFolder) ----
+$root = New-Root; New-FakeInstall $root
+Check ((Repair-ClientFolder $root) -eq "ok") "recovery: healthy Client left alone"
+Remove-Item $root -Recurse -Force
+
+# killed between the renames: only Client.old (and a verified Client.new)
+$root = New-Root; New-FakeInstall $root
+$zip = New-FakeZip $root
+# a real kill skips the rollback: build that state by hand
+$p = Get-Paths $root
+Expand-Archive $zip $p.New; Write-ReadyMarker $p.New "v2" (Get-Sha256 $zip)
+Rename-Item $p.Client "Client.old"
+Check ((Repair-ClientFolder $root) -eq "old") "recovery: Client.old preferred over a verified Client.new"
+Check ((Read-F (Join-Path $p.Client "TazUO.exe")) -eq "old exe") "recovery: old client back in Client"
+Check ((Read-F (Join-Path $p.Client "Data\Profiles\acct\UO Smallz\Char\profile.json")) -eq "my profile") "recovery: profile back"
+Check ((Read-Stamp $p.Stamp).Tag -eq "v1") "recovery (old): stamp still v1, update offered again"
+Remove-Item $root -Recurse -Force
+
+# only a verified Client.new (no old copy: first install killed mid-swap)
+$root = New-Root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Expand-Archive $zip $p.New; Write-ReadyMarker $p.New "v2" (Get-Sha256 $zip)
+Check ((Repair-ClientFolder $root) -eq "new") "recovery: verified Client.new used when no Client.old"
+Check ((Read-F $p.Exe) -eq "new exe" -and (Read-Stamp $p.Stamp).Tag -eq "v2") "recovery (new): Client and stamp from the marker"
+Check (-not (Test-Path (Join-Path $p.Client ".uosmallz-ready.json"))) "recovery (new): marker removed"
+Remove-Item $root -Recurse -Force
+
+# unverified Client.new (no marker = unpack was interrupted): not used
+$root = New-Root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Expand-Archive $zip $p.New
+Check ((Repair-ClientFolder $root) -eq "none" -and -not (Test-Path $p.Client)) "recovery: unverified Client.new never used"
+Remove-Item $root -Recurse -Force
+
+# Client without TazUO.exe is moved aside, not deleted
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+Rename-Item $p.Client "Client.old"
+Set-File (Join-Path $p.Client "Data\keep.txt") "half"
+Check ((Repair-ClientFolder $root) -eq "old") "recovery: broken Client replaced by Client.old"
+Check (@(Get-ChildItem $root -Directory -Filter "Client.broken-*").Count -eq 1) "recovery: broken Client kept as Client.broken-*"
+Remove-Item $root -Recurse -Force
+
+# interrupted unpack leaves no Client.new
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Set-Item Function:\Copy-UserFiles -Value { param($a, $b) throw "simulated: disk full" }
+$threw = $false; try { Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2" } catch { $threw = $true }
+. (Join-Path $here "..\installer\update-check.ps1") -NoMain -InstallRoot $here
+Check ($threw -and -not (Test-Path $p.New) -and (Read-F $p.Exe) -eq "old exe") "failed unpack/copy: Client.new removed, old client untouched"
+Remove-Item $root -Recurse -Force
+
 # ---- download with timeouts (local one-shot HTTP server in a job) ----
 function Start-OneShotServer([int]$port, [string]$body, [int]$sleepAfterSec) {
     return Start-Job -ArgumentList $port, $body, $sleepAfterSec -ScriptBlock {

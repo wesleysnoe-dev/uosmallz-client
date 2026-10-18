@@ -244,6 +244,59 @@ function Copy-UserFiles([string]$oldDir, [string]$newDir) {
     }
 }
 
+# ---- startup recovery ----------------------------------------------------
+
+$ReadyMarkerName = ".uosmallz-ready.json"
+
+function Write-ReadyMarker([string]$dir, [string]$tag, [string]$sha) {
+    Write-Stamp (Join-Path $dir $ReadyMarkerName) $tag $sha
+}
+
+# A launch that finds no usable Client (killed between the two renames of
+# a swap, or a half-deleted folder) puts one back before anything else.
+# The rule:
+#   1. Client.old wins when it has TazUO.exe: it is the client that already
+#      ran on this PC (known good). The stamp still names it, because the
+#      stamp is written only after a finished swap; the new version is
+#      simply offered again.
+#   2. Otherwise Client.new, but only when it is complete and verified: it
+#      has TazUO.exe and the ready marker, which is written after the zip's
+#      SHA256 check, the unpack and the copy of the player's files. Its
+#      marker becomes the stamp.
+#   3. Otherwise nothing can be done (the player re-runs install.bat).
+# A Client folder without TazUO.exe is moved aside (Client.broken-<time>),
+# never deleted, since it may hold the player's Data\.
+# Returns "ok", "old", "new" or "none".
+function Repair-ClientFolder([string]$root) {
+    $p = Get-Paths $root
+    if (Test-Path -LiteralPath $p.Exe) { return "ok" }
+    $oldOk = Test-Path -LiteralPath (Join-Path $p.Old "TazUO.exe")
+    $newMarker = $null
+    if (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe")) {
+        $newMarker = Read-Stamp (Join-Path $p.New $ReadyMarkerName)
+        if ($newMarker -and [string]::IsNullOrWhiteSpace($newMarker.Sha256)) { $newMarker = $null }
+    }
+    if (-not $oldOk -and -not $newMarker) {
+        Write-LaunchLog $root "recovery: no usable Client, Client.old or verified Client.new"
+        return "none"
+    }
+    if (Test-Path -LiteralPath $p.Client) {
+        $aside = "Client.broken-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+        Rename-Item -LiteralPath $p.Client -NewName $aside
+        Write-LaunchLog $root "recovery: Client had no TazUO.exe, moved to $aside"
+    }
+    if ($oldOk) {
+        Rename-Item -LiteralPath $p.Old -NewName "Client"
+        Write-LaunchLog $root "recovery: restored Client.old (the last client that ran)"
+        return "old"
+    }
+    Rename-Item -LiteralPath $p.New -NewName "Client"
+    Write-Stamp $p.Stamp $newMarker.Tag $newMarker.Sha256
+    Remove-Item -LiteralPath (Join-Path $p.Client $ReadyMarkerName) -Force -ErrorAction SilentlyContinue
+    Write-LaunchLog $root "recovery: restored the verified Client.new ($($newMarker.Tag))"
+    return "new"
+}
+
 # Unpack $zip, carry user files, swap. Throws on failure after restoring
 # the original Client folder. Returns nothing on success.
 function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha, [string]$tag) {
@@ -252,19 +305,27 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         throw "SHA256 mismatch for the downloaded client (expected $expectedSha)"
     }
     if (Test-Path -LiteralPath $p.New) { Remove-Item -LiteralPath $p.New -Recurse -Force }
-    Expand-Archive -LiteralPath $zip -DestinationPath $p.New -Force
-    # a zip with one top folder: use what is inside it
-    $top = @(Get-ChildItem -LiteralPath $p.New -Force)
-    if ($top.Count -eq 1 -and $top[0].PSIsContainer -and -not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
-        $inner = $top[0].FullName
-        foreach ($c in Get-ChildItem -LiteralPath $inner -Force) { Move-Item -LiteralPath $c.FullName -Destination $p.New }
-        Remove-Item -LiteralPath $inner -Recurse -Force
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
+    try {
+        Expand-Archive -LiteralPath $zip -DestinationPath $p.New -Force
+        # a zip with one top folder: use what is inside it
+        $top = @(Get-ChildItem -LiteralPath $p.New -Force)
+        if ($top.Count -eq 1 -and $top[0].PSIsContainer -and -not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
+            $inner = $top[0].FullName
+            foreach ($c in Get-ChildItem -LiteralPath $inner -Force) { Move-Item -LiteralPath $c.FullName -Destination $p.New }
+            Remove-Item -LiteralPath $inner -Recurse -Force
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
+            throw "the downloaded client has no TazUO.exe"
+        }
+        if (Test-Path -LiteralPath $p.Client) { Copy-UserFiles $p.Client $p.New }
+        # Client.new is now complete and its zip verified: say so, for the
+        # startup recovery (Repair-ClientFolder) if we are killed mid-swap.
+        Write-ReadyMarker $p.New $tag $expectedSha
+    } catch {
+        # a half-unpacked Client.new (disk full, antivirus) never stays behind
         Remove-Item -LiteralPath $p.New -Recurse -Force -ErrorAction SilentlyContinue
-        throw "the downloaded client has no TazUO.exe"
+        throw
     }
-    if (Test-Path -LiteralPath $p.Client) { Copy-UserFiles $p.Client $p.New }
 
     if (Test-Path -LiteralPath $p.Old) { Remove-Item -LiteralPath $p.Old -Recurse -Force }
     $movedOld = $false
@@ -275,6 +336,7 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         }
         Rename-Item -LiteralPath $p.New -NewName "Client"
         Write-Stamp $p.Stamp $tag $expectedSha
+        Remove-Item -LiteralPath (Join-Path $p.Client $ReadyMarkerName) -Force -ErrorAction SilentlyContinue
     } catch {
         $err = $_
         # roll back: put the old client back exactly as it was
@@ -477,6 +539,7 @@ function Invoke-Launcher([string]$root) {
 }
 
 if (-not $NoMain) {
+    try { [void](Repair-ClientFolder $InstallRoot) } catch { Write-LaunchLog $InstallRoot "recovery failed: $($_.Exception.Message)" }
     try { Invoke-Launcher $InstallRoot } catch { }
     Start-Client $InstallRoot
 }
