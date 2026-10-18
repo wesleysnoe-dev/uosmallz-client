@@ -313,6 +313,41 @@ Remove-Item $p.Old -Recurse -Force
 Check ((Confirm-PendingUpdate $root) -and -not (Test-Path $p.Pending)) "pending: no Client.old left, marker dropped"
 Remove-Item $root -Recurse -Force
 
+# ---- installer path: a zip that wrongly ships settings.json / Data\ ----
+function New-BadZip([string]$dir) {
+    $src = Join-Path $dir ("badsrc-" + [Guid]::NewGuid().ToString("N"))
+    Set-File (Join-Path $src "TazUO.exe") "new exe"
+    Set-File (Join-Path $src "settings.json") '{"ip":"zip-default"}'
+    Set-File (Join-Path $src "Data\Profiles\acct\UO Smallz\Char\profile.json") "zip profile"
+    Set-File (Join-Path $src "Data\zip-only.txt") "zip data"
+    $zip = Join-Path $dir "bad.zip"
+    Compress-Archive -Path (Join-Path $src "*") -DestinationPath $zip
+    return $zip
+}
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-BadZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Check ((Read-F (Join-Path $p.Client "settings.json")) -eq '{"ip":"192.168.1.222","port":2593}') "installer swap: zip's settings.json never overwrites the player's"
+Check ((Read-F (Join-Path $p.Client "Data\Profiles\acct\UO Smallz\Char\profile.json")) -eq "my profile") "installer swap: zip's Data\ never overwrites the player's"
+Check (-not (Test-Path (Join-Path $p.Client "Data\zip-only.txt"))) "installer swap: nothing from the zip's Data\ at all"
+Remove-Item $root -Recurse -Force
+# fresh install (no Client yet): swap creates Client, no Client.old, no pending; zip's settings.json dropped
+$root = New-Root; $p = Get-Paths $root
+$zip = New-BadZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Check ((Read-F $p.Exe) -eq "new exe" -and -not (Test-Path $p.Old) -and -not (Test-Path $p.Pending)) "fresh install: Client created, no Client.old or pending"
+Check (-not (Test-Path (Join-Path $p.Client "settings.json"))) "fresh install: zip's settings.json dropped (Merge-ClientSettings writes it)"
+Check ((Read-Stamp $p.Stamp).Tag -eq "v2") "fresh install: stamp written by the swap"
+Remove-Item $root -Recurse -Force
+# re-install over a half-swapped client: repair first, then swap keeps the profile
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+Rename-Item $p.Client "Client.old"
+$zip = New-FakeZip $root
+$r = Repair-ClientFolder $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Check ($r -eq "old" -and (Read-F (Join-Path $p.Client "Data\Profiles\acct\UO Smallz\Char\profile.json")) -eq "my profile") "re-install after an interrupted update: profile kept"
+Remove-Item $root -Recurse -Force
+
 # ---- download with timeouts (local one-shot HTTP server in a job) ----
 function Start-OneShotServer([int]$port, [string]$body, [int]$sleepAfterSec) {
     return Start-Job -ArgumentList $port, $body, $sleepAfterSec -ScriptBlock {

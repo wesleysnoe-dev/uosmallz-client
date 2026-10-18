@@ -244,7 +244,7 @@ try {
   if ([string]::IsNullOrWhiteSpace($ans)) { $InstallRoot = $default } else { $InstallRoot = $ans.Trim().Trim('"') }
   $ClientDir = Join-Path $InstallRoot "Client"
   $DataRoot  = Join-Path $InstallRoot "UOData"
-  New-Item -ItemType Directory -Force -Path $ClientDir, $DataRoot | Out-Null
+  New-Item -ItemType Directory -Force -Path $InstallRoot, $DataRoot | Out-Null
 
   # 1. Game client
   Step "Game client (TazUO)"
@@ -273,14 +273,17 @@ try {
   }
   Ok "Client zip SHA256 verified ($clientTag)"
   if (@(Get-ClientProcess $ClientDir).Count -gt 0) { Die "UO Smallz is running. Close the game and run install.bat again." }
-  Say "Unpacking (your settings.json and Data\ profiles are kept)..."
-  Expand-Archive -LiteralPath $zip -DestinationPath $ClientDir -Force
+  # A client left half-swapped by an interrupted update is put back first,
+  # so the player's Data\ is where the swap below expects it.
+  $rep = Repair-ClientFolder $InstallRoot
+  if ($rep -eq "old" -or $rep -eq "new") { Ok "Repaired an interrupted client update ($rep copy restored)" }
+  Say "Unpacking beside the current client (your settings.json and Data\ profiles are kept)..."
+  # Unpacks to Client.new (the zip's own settings.json / Data\ dropped),
+  # copies the player's files across, then swaps Client -> Client.old and
+  # Client.new -> Client; any failure puts the old client back.
+  try { Install-ClientUpdate $InstallRoot $zip $clientSha $clientTag }
+  catch { Die "Installing the client failed, your previous client was kept: $($_.Exception.Message)" }
   $exe = Join-Path $ClientDir "TazUO.exe"
-  if (-not (Test-Path -LiteralPath $exe)) {
-    $e = Get-ChildItem -LiteralPath $ClientDir -Recurse -Filter "TazUO.exe" | Select-Object -First 1
-    if (-not $e) { Die "TazUO.exe not found after unpacking the client." }
-    $exe = $e.FullName
-  }
   Ok "Client: $exe"
 
   # 2. UO game data
@@ -356,7 +359,6 @@ try {
   else { Ok "settings.json: set $($set -join ', ') ($settings)" }
 
   # 3b. Version stamp and launcher (update check at every start)
-  Write-Stamp (Join-Path $InstallRoot "client-version.json") $clientTag $clientSha
   foreach ($f in @("update-check.ps1", "launch.vbs")) {
     Copy-Item -LiteralPath (Join-Path $ScriptDir $f) -Destination (Join-Path $InstallRoot $f) -Force
   }

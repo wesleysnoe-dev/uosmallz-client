@@ -408,6 +408,12 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         if (-not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
             throw "the downloaded client has no TazUO.exe"
         }
+        # The player's files never come from a zip: a settings.json or Data\
+        # shipped by mistake is dropped before the player's are copied in.
+        foreach ($mine in @("settings.json", "Data")) {
+            $m = Join-Path $p.New $mine
+            if (Test-Path -LiteralPath $m) { Remove-Item -LiteralPath $m -Recurse -Force }
+        }
         if (Test-Path -LiteralPath $p.Client) { Copy-UserFiles $p.Client $p.New }
         # Client.new is now complete and its zip verified: say so, for the
         # startup recovery (Repair-ClientFolder) if we are killed mid-swap.
