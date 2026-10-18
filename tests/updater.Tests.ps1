@@ -251,6 +251,68 @@ $threw = $false; try { Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2" } 
 Check ($threw -and -not (Test-Path $p.New) -and (Read-F $p.Exe) -eq "old exe") "failed unpack/copy: Client.new removed, old client untouched"
 Remove-Item $root -Recurse -Force
 
+# ---- unconfirmed update: Client.old kept until a good launch ----
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+$pend = Read-Pending $p.Pending
+Check ($pend -and $pend.Tag -eq "v2" -and $pend.PrevTag -eq "v1" -and -not $pend.Ok) "pending: written at swap with the previous stamp"
+Check (-not (Confirm-PendingUpdate $root) -and (Test-Path (Join-Path $p.Old "TazUO.exe"))) "pending: Client.old kept while unconfirmed (same run / no good launch)"
+# a quick-exit "client": not healthy
+# a stand-in for TazUO.exe: Windows PowerShell on Windows, /bin/sh elsewhere
+function Start-FakeClient([int]$runSeconds) {
+    if ($env:OS -eq "Windows_NT") {
+        return Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile", "-Command", "Start-Sleep $runSeconds" -WindowStyle Hidden -PassThru
+    }
+    return Start-Process -FilePath "sleep" -ArgumentList "$runSeconds" -PassThru
+}
+$quick = Start-FakeClient 0
+Check (-not (Test-LaunchHealthy $quick 5)) "launch watch: a client that exits at once is not healthy"
+# a long-running "client": healthy after the window
+$slow = Start-FakeClient 8
+Check (Test-LaunchHealthy $slow 2) "launch watch: a client still up after the window is healthy"
+try { $slow.Kill() } catch { }
+Check ((Read-Pending $p.Pending).Ok -eq $false) "pending: still unconfirmed before a healthy launch"
+Set-PendingLaunchOk $root
+Check ((Read-Pending $p.Pending).Ok -and (Test-Path $p.Old)) "pending: healthy launch recorded, Client.old still there this run"
+Check ((Confirm-PendingUpdate $root) -and -not (Test-Path $p.Old) -and -not (Test-Path $p.Pending)) "pending: next run removes Client.old and the marker"
+Remove-Item $root -Recurse -Force
+
+# update check deferred while unconfirmed: Install never runs over a pending Client.old
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Set-Item Function:\Get-LatestRelease -Value { throw "must not be called while pending" }
+$called = $true
+try { Invoke-Launcher $root; $called = $false } catch { }
+. (Join-Path $here "..\installer\update-check.ps1") -NoMain -InstallRoot $here
+Check (-not $called -and (Test-Path (Join-Path $p.Old "TazUO.exe"))) "pending: launcher defers the update check, Client.old safe"
+# rollback after a failed launch: profile changes made with the new client survive
+Set-File (Join-Path $p.Client "Data\Profiles\acct\UO Smallz\Char\profile.json") "played on v2"
+Restore-PreviousClient $root
+Check ((Read-F $p.Exe) -eq "old exe") "rollback: previous client back in Client"
+Check ((Read-F (Join-Path $p.Client "Data\Profiles\acct\UO Smallz\Char\profile.json")) -eq "played on v2") "rollback: profile from the failed client carried back"
+Check ((Read-Stamp $p.Stamp).Tag -eq "v1" -and -not (Test-Path $p.Pending)) "rollback: stamp v1, pending cleared"
+Check (((Get-Content $p.Skip -Raw).Trim()) -like "v2 *") "rollback: failed version remembered as skipped"
+Check (@(Get-ChildItem $root -Directory -Filter "Client.failed-*").Count -eq 1) "rollback: failed client kept aside"
+Remove-Item $root -Recurse -Force
+
+# recovery with a pending marker: restoring Client.old resets the stamp
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Remove-Item $p.Client -Recurse -Force
+Check ((Repair-ClientFolder $root) -eq "old" -and (Read-Stamp $p.Stamp).Tag -eq "v1" -and -not (Test-Path $p.Pending)) "recovery after an update: Client.old back, stamp v1, pending cleared"
+Remove-Item $root -Recurse -Force
+
+# pending without Client.old (removed by hand): marker dropped, updates resume
+$root = New-Root; New-FakeInstall $root; $p = Get-Paths $root
+$zip = New-FakeZip $root
+Install-ClientUpdate $root $zip (Get-Sha256 $zip) "v2"
+Remove-Item $p.Old -Recurse -Force
+Check ((Confirm-PendingUpdate $root) -and -not (Test-Path $p.Pending)) "pending: no Client.old left, marker dropped"
+Remove-Item $root -Recurse -Force
+
 # ---- download with timeouts (local one-shot HTTP server in a job) ----
 function Start-OneShotServer([int]$port, [string]$body, [int]$sleepAfterSec) {
     return Start-Job -ArgumentList $port, $body, $sleepAfterSec -ScriptBlock {

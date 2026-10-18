@@ -52,6 +52,7 @@ function Get-Paths([string]$root) {
         Old       = Join-Path $root "Client.old"
         Exe       = Join-Path (Join-Path $root "Client") "TazUO.exe"
         Stamp     = Join-Path $root "client-version.json"
+        Pending   = Join-Path $root "client-pending.json"
         Skip      = Join-Path $root "client-skipped.txt"
         Log       = Join-Path $root "launch.log"
     }
@@ -287,6 +288,11 @@ function Repair-ClientFolder([string]$root) {
     }
     if ($oldOk) {
         Rename-Item -LiteralPath $p.Old -NewName "Client"
+        $pend = Read-Pending $p.Pending
+        if ($pend) {
+            if ($pend.PrevTag) { Write-Stamp $p.Stamp $pend.PrevTag $pend.PrevSha }
+            Remove-Item -LiteralPath $p.Pending -Force -ErrorAction SilentlyContinue
+        }
         Write-LaunchLog $root "recovery: restored Client.old (the last client that ran)"
         return "old"
     }
@@ -295,6 +301,91 @@ function Repair-ClientFolder([string]$root) {
     Remove-Item -LiteralPath (Join-Path $p.Client $ReadyMarkerName) -Force -ErrorAction SilentlyContinue
     Write-LaunchLog $root "recovery: restored the verified Client.new ($($newMarker.Tag))"
     return "new"
+}
+
+# ---- unconfirmed update (client-pending.json) -----------------------------
+# Written at swap time. Client.old is deleted only on a LATER run, after a
+# launch of the new client was seen to start and stay up for
+# $HealthySeconds. If the new client dies sooner, the player is offered the
+# previous one back.
+
+$HealthySeconds = 20
+
+function Write-Pending([string]$path, [string]$tag, [string]$sha, $prev, [bool]$ok) {
+    $pt = ""; $ps = ""
+    if ($prev) { $pt = [string]$prev.Tag; $ps = [string]$prev.Sha256 }
+    $obj = [ordered]@{ tag = $tag; sha256 = $sha; prev_tag = $pt; prev_sha256 = $ps; launched_ok = $ok; swapped = (Get-Date).ToString("s") }
+    [IO.File]::WriteAllText($path, ($obj | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+}
+
+function Read-Pending([string]$path) {
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        $j = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        return @{ Tag = [string]$j.tag; Sha256 = [string]$j.sha256; PrevTag = [string]$j.prev_tag; PrevSha = [string]$j.prev_sha256; Ok = [bool]$j.launched_ok }
+    } catch { return @{ Tag = ""; Sha256 = ""; PrevTag = ""; PrevSha = ""; Ok = $false } }
+}
+
+# Start of a run: an update whose launch was already seen healthy is
+# final; Client.old and the marker go. Returns $true when it cleaned up.
+function Confirm-PendingUpdate([string]$root) {
+    $p = Get-Paths $root
+    $pend = Read-Pending $p.Pending
+    if ($null -eq $pend) { return $false }
+    if (-not (Test-Path -LiteralPath $p.Old)) {
+        # nothing left to protect (Client.old removed by hand): stop waiting
+        Remove-Item -LiteralPath $p.Pending -Force
+        Write-LaunchLog $root "update $($pend.Tag): no Client.old any more, pending marker dropped"
+        return $true
+    }
+    if (-not $pend.Ok) { return $false }
+    if (Test-Path -LiteralPath $p.Old) { Remove-Item -LiteralPath $p.Old -Recurse -Force }
+    Remove-Item -LiteralPath $p.Pending -Force
+    Write-LaunchLog $root "update $($pend.Tag) confirmed by a good launch: Client.old removed"
+    return $true
+}
+
+# Did the client start and stay up? $proc from Start-Process -PassThru.
+function Test-LaunchHealthy($proc, [int]$seconds = $HealthySeconds) {
+    if ($null -eq $proc) { return $false }
+    if (-not $proc.WaitForExit($seconds * 1000)) { return $true }   # still running
+    return $false
+}
+
+function Set-PendingLaunchOk([string]$root) {
+    $p = Get-Paths $root
+    $pend = Read-Pending $p.Pending
+    if ($null -eq $pend) { return }
+    Write-Pending $p.Pending $pend.Tag $pend.Sha256 @{ Tag = $pend.PrevTag; Sha256 = $pend.PrevSha } $true
+    Write-LaunchLog $root "update $($pend.Tag): client started and stayed up ${HealthySeconds}s; Client.old goes on the next start"
+}
+
+# Put the previous client back after a failed update. The player's files
+# (settings.json, Data\) from the failed client are carried into it first,
+# so nothing played since the swap is lost. The failed client is kept as
+# Client.failed-<time>; its version is remembered as skipped.
+function Restore-PreviousClient([string]$root) {
+    $p = Get-Paths $root
+    if (-not (Test-Path -LiteralPath (Join-Path $p.Old "TazUO.exe"))) { throw "no previous client (Client.old) to go back to" }
+    $pend = Read-Pending $p.Pending
+    $aside = $null
+    if (Test-Path -LiteralPath $p.Client) {
+        Copy-UserFiles $p.Client $p.Old
+        $aside = "Client.failed-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+        Rename-Item -LiteralPath $p.Client -NewName $aside
+    }
+    try {
+        Rename-Item -LiteralPath $p.Old -NewName "Client"
+    } catch {
+        if ($aside) { Rename-Item -LiteralPath (Join-Path $root $aside) -NewName "Client" }
+        throw
+    }
+    if ($pend) {
+        if ($pend.PrevTag) { Write-Stamp $p.Stamp $pend.PrevTag $pend.PrevSha }
+        if ($pend.Tag) { Set-Content -LiteralPath $p.Skip -Value "$($pend.Tag) $($pend.Sha256.ToLower())" -Encoding ASCII }
+    }
+    Remove-Item -LiteralPath $p.Pending -Force -ErrorAction SilentlyContinue
+    Write-LaunchLog $root "rolled back to the previous client ($($pend.PrevTag)); $($pend.Tag) skipped"
 }
 
 # Unpack $zip, carry user files, swap. Throws on failure after restoring
@@ -327,7 +418,11 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         throw
     }
 
+    # An older Client.old (from an update already confirmed by a good launch,
+    # or a re-install) makes way. The launcher never gets here while an
+    # update is still unconfirmed (see Invoke-Launcher).
     if (Test-Path -LiteralPath $p.Old) { Remove-Item -LiteralPath $p.Old -Recurse -Force }
+    $prev = Read-Stamp $p.Stamp
     $movedOld = $false
     try {
         if (Test-Path -LiteralPath $p.Client) {
@@ -337,6 +432,9 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         Rename-Item -LiteralPath $p.New -NewName "Client"
         Write-Stamp $p.Stamp $tag $expectedSha
         Remove-Item -LiteralPath (Join-Path $p.Client $ReadyMarkerName) -Force -ErrorAction SilentlyContinue
+        # Client.old stays until this client has started and kept running
+        # once (Confirm-PendingUpdate on a later run).
+        if ($movedOld) { Write-Pending $p.Pending $tag $expectedSha $prev $false }
     } catch {
         $err = $_
         # roll back: put the old client back exactly as it was
@@ -477,7 +575,7 @@ function Show-Busy([string]$text) {
 function Start-Client([string]$root) {
     $p = Get-Paths $root
     if (Test-Path -LiteralPath $p.Exe) {
-        Start-Process -FilePath $p.Exe -WorkingDirectory $p.Client
+        return Start-Process -FilePath $p.Exe -WorkingDirectory $p.Client -PassThru
     } else {
         Write-LaunchLog $root "TazUO.exe not found at $($p.Exe)"
         try { Show-Message "The game client was not found in $($p.Client). Run install.bat again." "OK" "Error" | Out-Null } catch { }
@@ -490,6 +588,11 @@ function Invoke-Launcher([string]$root) {
     $p = Get-Paths $root
     try {
         $local = Read-Stamp $p.Stamp
+        if (Test-Path -LiteralPath $p.Pending) {
+            # the last update has not had a good launch yet: settle that first
+            Write-LaunchLog $root "update check deferred: the last update is not confirmed yet"
+            return
+        }
         try {
             $info = Get-LatestRelease
         } catch {
@@ -538,8 +641,37 @@ function Invoke-Launcher([string]$root) {
     }
 }
 
+# After launching: while an update is unconfirmed, watch the client. Up for
+# $HealthySeconds = good (Client.old goes on the next start). Gone sooner =
+# offer the previous client back.
+function Watch-PendingLaunch([string]$root, $proc) {
+    $p = Get-Paths $root
+    $pend = Read-Pending $p.Pending
+    if ($null -eq $pend -or $pend.Ok) { return }
+    if (Test-LaunchHealthy $proc) { Set-PendingLaunchOk $root; return }
+    $code = "?"
+    try { if ($proc) { $code = $proc.ExitCode } } catch { }
+    Write-LaunchLog $root "update $($pend.Tag): the client closed within ${HealthySeconds}s (exit $code)"
+    if (-not (Test-Path -LiteralPath (Join-Path $p.Old "TazUO.exe"))) { return }
+    $prevName = $pend.PrevTag
+    if (-not $prevName) { $prevName = "the previous version" }
+    $a = Show-Message ("The updated UO Smallz client ($($pend.Tag)) closed right after it started.`n`n" +
+        "Go back to $prevName? Your settings and characters' profiles are kept.`n`n" +
+        "Yes = go back and start it now. No = keep $($pend.Tag) (you will be asked again if it happens again).") "YesNo" "Warning"
+    if ($a -ne "Yes") { return }
+    try {
+        Restore-PreviousClient $root
+        [void](Start-Client $root)
+    } catch {
+        Write-LaunchLog $root "rollback failed: $($_.Exception.Message)"
+        try { Show-Message "Going back did not work: $($_.Exception.Message)`n`nClient.old is still there; run install.bat to repair." "OK" "Error" | Out-Null } catch { }
+    }
+}
+
 if (-not $NoMain) {
     try { [void](Repair-ClientFolder $InstallRoot) } catch { Write-LaunchLog $InstallRoot "recovery failed: $($_.Exception.Message)" }
+    try { [void](Confirm-PendingUpdate $InstallRoot) } catch { Write-LaunchLog $InstallRoot "cleanup failed: $($_.Exception.Message)" }
     try { Invoke-Launcher $InstallRoot } catch { }
-    Start-Client $InstallRoot
+    $proc = Start-Client $InstallRoot
+    try { Watch-PendingLaunch $InstallRoot $proc } catch { Write-LaunchLog $InstallRoot "launch watch failed: $($_.Exception.Message)" }
 }
