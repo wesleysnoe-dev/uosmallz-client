@@ -46,17 +46,33 @@ function Find-UOData($roots) {
 
 
 # ---------------------------------------------------------------------------
-# Classic Felucca map art: same steps, URL and hash as the UO Offline
-# installer (the UO Smallz server uses these map files, so the client must too).
+# Felucca map art. Since October 2026 the UO Smallz server runs the MODERN
+# map (its faction strongholds, spawners and decoration were laid out on it;
+# on the classic art the Minax stronghold sits inside a mountain, drawn black)
+# with the Magincia island pasted in from the classic art, so the town stands
+# intact. The client must have exactly the same files:
+#   - an install that has the classic map gets the modern files put back
+#     from _backup-modern-map (the classic ones go to _backup-classic-map-retired)
+#   - the Magincia island is pasted with map-merge.ps1 -Magincia from the
+#     same sources the server's came from: land from the 7.0.23.1 data's own
+#     map0x.mul, statics from the UO Second Age client (kept classic files,
+#     else downloaded as before)
+#   - the result is checked against the server's map files (SHA256 below)
+# INSTALL_CLASSIC_MAP=1 still swaps in the whole classic art (it does not
+# match the server any more).
 # ---------------------------------------------------------------------------
-$InstallT2AMap      = $true
-if ($env:INSTALL_CLASSIC_MAP -eq "0") { $InstallT2AMap = $false }
+$InstallT2AMap      = ($env:INSTALL_CLASSIC_MAP -eq "1")
 $T2AInstallerUrl    = "https://download.uosecondage.com/UOSA_Client_Setup.exe"
 $T2AInstallerSha256 = "674ec3cce9621bd8c1a8f2f69070e64e63191ce73d6f297236bf8f3b89d41ddf"
 $T2AMulFiles        = @("map0.mul", "statics0.mul", "staidx0.mul")
-# The 2002-area merge (map-merge.ps1) is OFF: the UO Smallz server map is the
-# classic swap without the merge, and the client must match it exactly.
-# Turn on (UOSMALLZ_MAP_MERGE=1) only if the server map gets merged too.
+# The UO Smallz server's Felucca map files (modern + intact Magincia, 2026-10-21).
+$ServerMapSha256    = @{
+  "map0.mul"     = "64e5a0b530e071da69e5f698680b0e0043a49aa9aa025322781d4f55b4dfcbc4"
+  "statics0.mul" = "2e362abf4cc55521bd2f673d6f71577fd7b42f9a3b4c293f5a998a7cfb5657c4"
+  "staidx0.mul"  = "e8f9d96eaa33775428cf260b2a70146c8a6e1af98caac554642484718566789d"
+}
+# The 2002-area merge (map-merge.ps1, classic map only) is OFF; the server is
+# not merged. UOSMALLZ_MAP_MERGE=1 runs it after an INSTALL_CLASSIC_MAP=1 swap.
 $RunMapMerge        = ($env:UOSMALLZ_MAP_MERGE -eq "1")
 function Banner($m) { Step $m }
 function Warn($m)   { Write-Host "[warn] $m" -ForegroundColor Yellow }
@@ -126,17 +142,10 @@ function RemoveUosaLeftovers {
   Ok "Cleaned up after the UOSA installer ($($found.Count) shortcut(s))."
 }
 
-function SwapT2AMap {
-  Banner "Installing classic Felucca map art (intact Magincia)"
-  if (-not $InstallT2AMap) { Say "The classic map option is off; keeping modern map art."; return }
-  if (-not $script:UOData) { Warn "UO data dir not resolved; skipping the classic map swap."; return }
-
-  $backupDir = Join-Path $script:UOData "_backup-modern-map"
-  if (Test-Path (Join-Path $backupDir "map0.mul")) {
-    Say "Classic map already swapped (modern backup exists). Skipping."
-    return
-  }
-
+# The three classic map files from the UO Second Age client, extracted to
+# $T2ASrcDir\uosa-install: a table file name -> path, or $null (warned).
+# RemoveUosaLeftovers puts the extract away once they have been copied.
+function Get-ClassicMapFiles {
   # 1. Obtain the UOSA installer (cached so re-runs don't re-download ~349 MB).
   New-Item -ItemType Directory -Force -Path $T2ASrcDir | Out-Null
   $uosaExe = Join-Path $T2ASrcDir "UOSA_Client_Setup.exe"
@@ -183,8 +192,8 @@ function SwapT2AMap {
       if (Test-Path -LiteralPath $szExe) { $sevenZipExe = $szExe }
     }
     if (-not $sevenZipExe) {
-      Warn "Could not get 7-Zip; keeping the modern map. Install 7-Zip from https://www.7-zip.org and re-run."
-      return
+      Warn "Could not get 7-Zip to read the classic map files. Install 7-Zip from https://www.7-zip.org and re-run."
+      return $null
     }
     Say "Extracting the classic map files with 7-Zip..."
     & $sevenZipExe (@("x", "-y", "-r", "-o$extractDir", $uosaExe) + $T2AMulFiles) 2>&1 | Out-Null
@@ -197,8 +206,25 @@ function SwapT2AMap {
     if ($hit) { $srcMap[$f] = $hit.FullName }
   }
   foreach ($f in $T2AMulFiles) {
-    if (-not $srcMap.ContainsKey($f)) { Warn "Classic $f not found after extract; aborting swap (modern map kept)."; return }
+    if (-not $srcMap.ContainsKey($f)) { Warn "Classic $f not found after extract."; return $null }
   }
+  return $srcMap
+}
+
+function SwapT2AMap {
+  if (-not $script:UOData) { Warn "UO data dir not resolved; skipping the map step."; return }
+  if (-not $InstallT2AMap) { UseServerMap; return }
+  Banner "Installing classic Felucca map art (INSTALL_CLASSIC_MAP=1)"
+  Warn "The UO Smallz server runs the modern map with intact Magincia: with the whole classic art, parts of your map will not match it."
+
+  $backupDir = Join-Path $script:UOData "_backup-modern-map"
+  if (Test-Path (Join-Path $backupDir "map0.mul")) {
+    Say "Classic map already swapped (modern backup exists). Skipping."
+    return
+  }
+  $extractDir = Join-Path $T2ASrcDir "uosa-install"
+  $srcMap = Get-ClassicMapFiles
+  if (-not $srcMap) { Warn "Aborting the classic map swap (modern map kept)."; return }
 
   # 3. Back up the modern files (the 3 swapped + radarcol/tiledata for safety).
   New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
@@ -231,6 +257,87 @@ function SwapT2AMap {
     if ($LASTEXITCODE -eq 0) { Ok "Solen hives, Minax and Council of Mages strongholds and Khaldun added to the classic map." }
     else { Warn "The area merge did not run; run map-merge.ps1 -DataDir <your UO folder> later (game closed)." }
   }
+}
+
+# The server's map: modern art with intact Magincia (see the top of the file).
+function UseServerMap {
+  Banner "Felucca map art (the server's: modern map, intact Magincia)"
+  if (-not (RestoreModernMap)) { return }
+  PasteMagincia
+  Test-ServerMap
+}
+
+# An install that has the classic map: put the modern map files back from
+# _backup-modern-map. The classic files go to _backup-classic-map-retired
+# (PasteMagincia takes Magincia's statics from there), and the modern backup
+# folder is renamed, so INSTALL_CLASSIC_MAP=1 later swaps again from scratch.
+# $false when the files are in use (the game is open).
+function RestoreModernMap {
+  $backupDir = Join-Path $script:UOData "_backup-modern-map"
+  if (-not (Test-Path (Join-Path $backupDir "map0.mul"))) { Say "Modern Felucca map art in use."; return $true }
+  foreach ($f in $T2AMulFiles) {
+    $p = Join-Path $script:UOData $f
+    try { $s = [System.IO.File]::Open($p, 'Open', 'ReadWrite', 'None'); $s.Close() }
+    catch { Warn "$f is in use: close the game, then run install.bat again to get the server's map."; return $false }
+  }
+  $retired = Join-Path $script:UOData "_backup-classic-map-retired"
+  New-Item -ItemType Directory -Force -Path $retired | Out-Null
+  foreach ($f in $T2AMulFiles) {
+    Copy-Item (Join-Path $script:UOData $f) (Join-Path $retired $f) -Force
+    Copy-Item (Join-Path $backupDir $f) (Join-Path $script:UOData $f) -Force
+  }
+  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  Rename-Item $backupDir "_backup-modern-map.restored-$stamp"
+  Ok "Modern Felucca map art put back (the classic files are in _backup-classic-map-retired)."
+  return $true
+}
+
+# Intact Magincia on the modern map, pasted the way the server's was: the
+# island's land from map0x.mul (in the 7.0.23.1 data), its statics from the
+# UO Second Age client. They are put together in _magincia-source for
+# map-merge.ps1 -Magincia -From. Once (magincia-paste.txt); undo with
+# map-merge.ps1 -Magincia -Revert -DataDir <your UO folder>.
+function PasteMagincia {
+  if (Test-Path (Join-Path $script:UOData "magincia-paste.txt")) { Say "Intact Magincia already on the map."; return }
+  $retired = Join-Path $script:UOData "_backup-classic-map-retired"
+  $statics = @{}
+  $extractDir = $null
+  if ((Test-Path (Join-Path $retired "statics0.mul")) -and (Test-Path (Join-Path $retired "staidx0.mul"))) {
+    foreach ($f in $T2AMulFiles) { $statics[$f] = Join-Path $retired $f }
+  } else {
+    $extractDir = Join-Path $T2ASrcDir "uosa-install"
+    $statics = Get-ClassicMapFiles
+    if (-not $statics) { Warn "Magincia stays bare ground (not as on the server). Run install.bat again to retry."; return }
+  }
+  $src = Join-Path $script:UOData "_magincia-source"
+  New-Item -ItemType Directory -Force -Path $src | Out-Null
+  Copy-Item $statics["statics0.mul"] (Join-Path $src "statics0.mul") -Force
+  Copy-Item $statics["staidx0.mul"] (Join-Path $src "staidx0.mul") -Force
+  $land = Join-Path $script:UOData "map0x.mul"
+  if (Test-Path $land) { Copy-Item $land (Join-Path $src "map0.mul") -Force }
+  else {
+    Warn "No map0x.mul in your UO folder: Magincia's land comes from the classic map instead (the shore water depth differs from the server's)."
+    Copy-Item $statics["map0.mul"] (Join-Path $src "map0.mul") -Force
+  }
+  Say "Putting intact Magincia onto the modern map..."
+  $merge = Join-Path $ScriptDir "map-merge.ps1"
+  $out = @(Invoke-Native "powershell.exe" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $merge, "-Magincia", "-From", $src, "-DataDir", $script:UOData, "-NoPause"))
+  $code = $LASTEXITCODE
+  Remove-Item $src -Recurse -Force -ErrorAction SilentlyContinue
+  if ($extractDir) { RemoveUosaLeftovers $extractDir }
+  if ($code -eq 0) { Ok "Intact Magincia added to the modern map." }
+  else {
+    foreach ($l in $out) { Say $l }
+    Warn "The Magincia paste did not run (close the game); run install.bat again."
+  }
+}
+
+function Test-ServerMap {
+  $off = @($T2AMulFiles | Where-Object {
+    (Get-FileHash -LiteralPath (Join-Path $script:UOData $_) -Algorithm SHA256).Hash.ToLower() -ne $ServerMapSha256[$_]
+  })
+  if ($off.Count -eq 0) { Ok "Your map files match the UO Smallz server's." }
+  else { Warn "Your $($off -join ', ') differ from the server's: some places may look different in game (another UO data version?)." }
 }
 
 try {
@@ -331,7 +438,7 @@ try {
   }
   Ok "UO data: $uoData"
 
-  # 2b. Classic map art
+  # 2b. Map art: the server's (modern, intact Magincia)
   $script:UOData = $uoData
   $T2ASrcDir = Join-Path $InstallRoot "t2a-src"
   SwapT2AMap

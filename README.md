@@ -21,7 +21,8 @@ UPDATES (Windows)
 
 LINUX
   Run install.sh from the installer zip. Needs curl, unzip, python3, p7zip,
-  and unar (or unrar / 7zz). pwsh is optional (for the 2002 map areas).
+  and unar (or unrar / 7zz). pwsh (PowerShell) is needed to paste intact
+  Magincia onto the map; without it Magincia is bare ground.
 
 LOGGING IN
   New player: type any new username and password at the login screen.
@@ -34,13 +35,24 @@ ABOUT THE GAME FILES
   install UO Classic yourself and give the installer that folder; other
   client versions may show glitches, 7.0.23.1 is the tested one.
 
-CLASSIC MAP
-  The shard uses the classic Felucca map (intact Magincia). The installer
-  downloads the UO Second Age client (~349 MB, uosecondage.com, SHA256
-  checked), copies its map0/statics0/staidx0.mul into your UO folder (the
-  originals go to _backup-modern-map). This is exactly the server's map;
-  without it your map will not match the server. map-merge.ps1 (2002 areas)
-  is included but off, because the server map is not merged.
+THE MAP
+  Since October 22, 2026 the shard runs the modern Felucca map with the
+  Magincia island pasted in from the classic map, so the town stands
+  intact. The installer sets up exactly those map files and checks them
+  against the server's ("Your map files match the UO Smallz server's").
+  It pastes Magincia's land from your 7.0.23.1 data and its buildings from
+  the UO Second Age client (~349 MB download from uosecondage.com, SHA256
+  checked, only if your UO folder doesn't already have them).
+
+  Installed before October 22? Your client still has the whole classic map,
+  which no longer matches the server: places like the Minax stronghold show
+  up black. Close the game, download the new UOSmallz-Installer-win.zip and
+  run install.bat again. It puts the modern map back (the classic files go
+  to _backup-classic-map-retired) and pastes Magincia. The game's own update
+  check does not do this; it only updates the client program.
+
+  INSTALL_CLASSIC_MAP=1 still installs the whole classic map, but it does not
+  match the server.
 
 MANUAL SETUP (no installer)
   Unzip UOSmallz-Client-win-x64.zip (or -linux-x64), then edit settings.json

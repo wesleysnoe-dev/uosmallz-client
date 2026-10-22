@@ -10,7 +10,7 @@ DATA_URL=https://mirror.ashkantra.de/fullclients/7.0.23.1.exe
 DATA_SHA=23b0548252bb4e6f39afbddac2e64f8deb862fbfaccb1303b87895d295e01839
 T2A_INSTALLER_URL="https://download.uosecondage.com/UOSA_Client_Setup.exe"
 T2A_INSTALLER_SHA256="674ec3cce9621bd8c1a8f2f69070e64e63191ce73d6f297236bf8f3b89d41ddf"
-INSTALL_T2A_MAP="${INSTALL_CLASSIC_MAP:-1}"
+INSTALL_T2A_MAP="${INSTALL_CLASSIC_MAP:-0}"
 ROOT="${1:-$HOME/.local/share/uosmallz}"
 UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
 say()  { echo "    $*"; }
@@ -56,14 +56,25 @@ PY
 fi
 ok "UO data: $UO_DATA"
 
-# Classic Felucca map art (same steps as the UO Offline install.sh).
+# Felucca map art: the server's, as in install.ps1 (see its notes). The UO
+# Smallz server runs the modern map with the Magincia island pasted in from
+# the classic art: an install with the classic map gets the modern files put
+# back, Magincia is pasted from the same sources (land: map0x.mul from the
+# 7.0.23.1 data; statics: the UO Second Age client) with map-merge.ps1
+# (needs pwsh), and the result is checked against the server's files.
+# INSTALL_CLASSIC_MAP=1 still swaps in the whole classic art.
 T2A_SRC_DIR="$ROOT/t2a-src"
-swap_t2a_map() {
-  banner "Installing classic Felucca map art (intact Magincia)"
-  [[ "${INSTALL_T2A_MAP}" == "1" ]] || { say "INSTALL_CLASSIC_MAP off; keeping modern map art."; return; }
-  local backup_dir="${UO_DATA}/_backup-modern-map"
-  if [[ -f "${backup_dir}/map0.mul" ]]; then say "Classic map already swapped (modern backup exists). Skipping."; return; fi
-  command -v 7z >/dev/null || { warn "7z not found; skipping the classic map swap (install p7zip and re-run)."; return; }
+MAP_FILES="map0.mul statics0.mul staidx0.mul"
+declare -A SERVER_MAP_SHA=(
+  [map0.mul]=64e5a0b530e071da69e5f698680b0e0043a49aa9aa025322781d4f55b4dfcbc4
+  [statics0.mul]=2e362abf4cc55521bd2f673d6f71577fd7b42f9a3b4c293f5a998a7cfb5657c4
+  [staidx0.mul]=e8f9d96eaa33775428cf260b2a70146c8a6e1af98caac554642484718566789d
+)
+# The three classic map files from the UO Second Age client, extracted to
+# $T2A_SRC_DIR/uosa-install: CLASSIC[file] = path. Fails (warned) without them.
+declare -A CLASSIC
+get_classic_map_files() {
+  command -v 7z >/dev/null || { warn "7z not found: cannot read the classic map files (install p7zip and re-run)."; return 1; }
   mkdir -p "${T2A_SRC_DIR}"
   local uosa_exe="${T2A_SRC_DIR}/UOSA_Client_Setup.exe"
   if [[ ! -f "${uosa_exe}" ]]; then
@@ -74,19 +85,28 @@ swap_t2a_map() {
   local extract_dir="${T2A_SRC_DIR}/uosa-install"; mkdir -p "${extract_dir}"
   say "Extracting the classic map files with 7z..."
   7z x -y "-o${extract_dir}" "${uosa_exe}" map0.mul statics0.mul staidx0.mul >/dev/null || true
-  local missing=0 f src; declare -A src_path
-  for f in map0.mul statics0.mul staidx0.mul; do
+  local missing=0 f src
+  for f in ${MAP_FILES}; do
     src="$(find "${extract_dir}" -maxdepth 4 -name "${f}" -print -quit 2>/dev/null || true)"
-    if [[ -z "${src}" ]]; then warn "Classic ${f} not found after extract."; missing=1; else src_path[${f}]="${src}"; fi
+    if [[ -z "${src}" ]]; then warn "Classic ${f} not found after extract."; missing=1; else CLASSIC[${f}]="${src}"; fi
   done
-  [[ "${missing}" == "0" ]] || { warn "Aborting the classic map swap; modern map kept."; return; }
+  [[ "${missing}" == "0" ]]
+}
+
+swap_t2a_map() {
+  banner "Installing classic Felucca map art (INSTALL_CLASSIC_MAP=1)"
+  warn "The UO Smallz server runs the modern map with intact Magincia: with the whole classic art, parts of your map will not match it."
+  local backup_dir="${UO_DATA}/_backup-modern-map" f
+  if [[ -f "${backup_dir}/map0.mul" ]]; then say "Classic map already swapped (modern backup exists). Skipping."; return; fi
+  get_classic_map_files || { warn "Aborting the classic map swap; modern map kept."; return; }
+  local -n src_path=CLASSIC
   mkdir -p "${backup_dir}"
   for f in map0.mul statics0.mul staidx0.mul radarcol.mul tiledata.mul; do
     [[ -f "${UO_DATA}/${f}" ]] && cp -f "${UO_DATA}/${f}" "${backup_dir}/${f}"
   done
   ok "Backed up modern map -> ${backup_dir}"
   for f in map0.mul statics0.mul staidx0.mul; do cp -f "${src_path[${f}]}" "${UO_DATA}/${f}"; done
-  rm -rf "${extract_dir}"
+  rm -rf "${T2A_SRC_DIR}/uosa-install"
   ok "Classic Felucca map art installed (intact Magincia)."
   # The 2002-area merge is OFF by default: the server map is the classic swap
   # without it. UOSMALLZ_MAP_MERGE=1 turns it on (only if the server is merged too).
@@ -97,7 +117,63 @@ swap_t2a_map() {
     warn "PowerShell (pwsh) not found: the Solen hives / faction strongholds / Khaldun areas were not merged. Install pwsh and run: pwsh map-merge.ps1 -DataDir \"${UO_DATA}\" -NoPause"
   fi
 }
-swap_t2a_map
+
+# An install that has the classic map: the modern files back from
+# _backup-modern-map, the classic ones to _backup-classic-map-retired.
+restore_modern_map() {
+  local backup_dir="${UO_DATA}/_backup-modern-map" retired="${UO_DATA}/_backup-classic-map-retired" f
+  if [[ ! -f "${backup_dir}/map0.mul" ]]; then say "Modern Felucca map art in use."; return 0; fi
+  mkdir -p "${retired}"
+  for f in ${MAP_FILES}; do
+    cp -f "${UO_DATA}/${f}" "${retired}/${f}"
+    cp -f "${backup_dir}/${f}" "${UO_DATA}/${f}"
+  done
+  mv "${backup_dir}" "${backup_dir}.restored-$(date +%Y%m%d-%H%M%S)"
+  ok "Modern Felucca map art put back (the classic files are in _backup-classic-map-retired)."
+}
+
+# Intact Magincia, pasted the way the server's was (see install.ps1).
+paste_magincia() {
+  if [[ -f "${UO_DATA}/magincia-paste.txt" ]]; then say "Intact Magincia already on the map."; return 0; fi
+  command -v pwsh >/dev/null || { warn "PowerShell (pwsh) not found: Magincia stays bare ground (not as on the server). Install pwsh and run install.sh again."; return 0; }
+  local retired="${UO_DATA}/_backup-classic-map-retired" src="${UO_DATA}/_magincia-source" extracted=0 code=0
+  if [[ -f "${retired}/statics0.mul" && -f "${retired}/staidx0.mul" ]]; then
+    CLASSIC=([map0.mul]="${retired}/map0.mul" [statics0.mul]="${retired}/statics0.mul" [staidx0.mul]="${retired}/staidx0.mul")
+  else
+    get_classic_map_files || { warn "Magincia stays bare ground (not as on the server). Run install.sh again to retry."; return 0; }
+    extracted=1
+  fi
+  mkdir -p "${src}"
+  cp -f "${CLASSIC[statics0.mul]}" "${src}/statics0.mul"
+  cp -f "${CLASSIC[staidx0.mul]}" "${src}/staidx0.mul"
+  if [[ -f "${UO_DATA}/map0x.mul" ]]; then
+    cp -f "${UO_DATA}/map0x.mul" "${src}/map0.mul"
+  else
+    warn "No map0x.mul in your UO folder: Magincia's land comes from the classic map instead (the shore water depth differs from the server's)."
+    cp -f "${CLASSIC[map0.mul]}" "${src}/map0.mul"
+  fi
+  say "Putting intact Magincia onto the modern map..."
+  pwsh -NoProfile -File "$here/map-merge.ps1" -Magincia -From "${src}" -DataDir "${UO_DATA}" -NoPause >/dev/null || code=$?
+  rm -rf "${src}"
+  if [[ "${extracted}" == "1" ]]; then rm -rf "${T2A_SRC_DIR}/uosa-install"; fi
+  if [[ "${code}" == "0" ]]; then ok "Intact Magincia added to the modern map."
+  else warn "The Magincia paste did not run (close the game); run install.sh again."; fi
+}
+
+check_server_map() {
+  local off="" f
+  for f in ${MAP_FILES}; do
+    [[ "$(sha256sum "${UO_DATA}/${f}" | cut -d' ' -f1)" == "${SERVER_MAP_SHA[${f}]}" ]] || off="${off} ${f}"
+  done
+  if [[ -z "${off}" ]]; then ok "Your map files match the UO Smallz server's."
+  else warn "Your${off} differ from the server's: some places may look different in game (another UO data version?)."; fi
+}
+
+if [[ "${INSTALL_T2A_MAP}" == "1" ]]; then swap_t2a_map
+else
+  banner "Felucca map art (the server's: modern map, intact Magincia)"
+  restore_modern_map; paste_magincia; check_server_map
+fi
 
 cat > "$ROOT/Client/settings.json" <<JSON
 {

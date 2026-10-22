@@ -16,11 +16,28 @@
     - Leave Khaldun's decoration out:  run-map-merge.bat -NoKhaldun
 
   The server and ClassicUO read the same files, so both see the change.
+
+  -Magincia (October 2026): the other way round. The shard now runs on the
+  MODERN map, where Felucca Magincia is bare ground (EA's ruins are
+  decoration, not map art), but its vendors, props, faction town stone and
+  sigil monolith and the bots' Magincia data were all laid out for the
+  intact town. This copies the whole Magincia island (3520-3839,
+  2016-2311) from the classic map files into the modern map in use:
+    - source: _backup-classic-map-retired (the installer keeps the classic
+      files there when it puts the modern map back), else _backup-classic-map,
+      or the folder -From names (the UO Smallz installer assembles the
+      server's source there: map0x.mul land, classic statics)
+    - the map in use is copied to _backup-before-magincia first; running it
+      again starts from that copy, so it is safe to repeat
+    - Undo:  run-map-merge.bat -Magincia -Revert
+    - magincia-paste.txt in the data folder records that it was done
 #>
 param(
   [string]$DataDir = "",
   [switch]$Revert,
   [switch]$NoKhaldun,
+  [switch]$Magincia,
+  [string]$From = "",
   [switch]$NoPause
 )
 $ErrorActionPreference = "Stop"
@@ -32,6 +49,8 @@ if ($PSVersionTable.PSEdition -eq "Core" -and $env:WINDIR) {
     if ($DataDir) { $argList += @("-DataDir", $DataDir) }
     if ($Revert) { $argList += "-Revert" }
     if ($NoKhaldun) { $argList += "-NoKhaldun" }
+    if ($Magincia) { $argList += "-Magincia" }
+    if ($From) { $argList += @("-From", $From) }
     if ($NoPause) { $argList += "-NoPause" }
     & $winPs @argList
     exit $LASTEXITCODE
@@ -179,7 +198,7 @@ public static class MapMerge
 Add-Type -TypeDefinition $MapMergeSource
 
 # ---------------------------------------------------------------- folders
-$root = Join-Path $env:USERPROFILE "uo-modernuo"
+$root = Join-Path ([Environment]::GetFolderPath("UserProfile")) "uo-modernuo"
 function Find-DataDir {
   $cands = @()
   $cfg = Join-Path $root "ModernUO\Distribution\Configuration\modernuo.json"
@@ -208,6 +227,54 @@ foreach ($f in $files) {
   } catch {
     Fail "$f is in use. Close the ModernUO server and ClassicUO, then run this again."
   }
+}
+
+# ---------------------------------------------------------------- Magincia
+if ($Magincia) {
+  $before = Join-Path $DataDir "_backup-before-magincia"
+  if ($Revert) {
+    if (-not (Test-Path (Join-Path $before "map0.mul"))) { Fail "No _backup-before-magincia folder: nothing to put back." }
+    foreach ($f in $files) { Copy-Item (Join-Path $before $f) (Join-Path $DataDir $f) -Force }
+    Remove-Item (Join-Path $DataDir "magincia-paste.txt") -ErrorAction SilentlyContinue
+    Write-Host "Put the map back as it was before the Magincia paste." -ForegroundColor Green
+    Done 0
+  }
+  $src = $null
+  if ($From) {
+    if (-not (Test-Path (Join-Path $From "map0.mul"))) { Fail "No map0.mul in $From to copy Magincia from." }
+    $src = $From
+  }
+  foreach ($c in @("_backup-classic-map-retired", "_backup-classic-map")) {
+    if ($src) { break }
+    $d = Join-Path $DataDir $c
+    if (Test-Path (Join-Path $d "map0.mul")) { $src = $d; break }
+  }
+  if (-not $src) {
+    Fail "No classic map files (_backup-classic-map-retired or _backup-classic-map) to copy Magincia from."
+  }
+  if (Test-Path (Join-Path $DataDir "_backup-modern-map\map0.mul")) {
+    Fail "The classic map is in use (_backup-modern-map exists): Magincia is already intact. Nothing to do."
+  }
+  if (-not (Test-Path (Join-Path $before "map0.mul"))) {
+    New-Item -ItemType Directory -Force -Path $before | Out-Null
+    foreach ($f in $files) { Copy-Item (Join-Path $DataDir $f) (Join-Path $before $f) -Force }
+    Write-Host "Backed up the map in use to $before"
+  } else {
+    Write-Host "Starting from the earlier backup in $before"
+  }
+  # x1, y1, x2, y2, mode: the island and its shore, whole 8x8 blocks.
+  $mrects = @(3520, 2016, 3839, 2311, 0)
+  $tmp = Join-Path $DataDir "_merge-tmp"
+  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+  Write-Host "Copying intact Magincia from $src ..."
+  $log = [MapMerge]::Run($before, $src, $tmp, [int[]]$mrects, [string[]]@("Magincia (intact, from the classic map)"), 4096)
+  foreach ($f in $files) { Copy-Item (Join-Path $tmp $f) (Join-Path $DataDir $f) -Force }
+  Remove-Item $tmp -Recurse -Force
+  $stamp = Get-Date -Format "yyyy-MM-dd HH:mm"
+  "Magincia paste $stamp from $src`r`n$log" | Set-Content (Join-Path $DataDir "magincia-paste.txt") -Encoding UTF8
+  Write-Host $log
+  Write-Host "Done. Start the server: it notices the new map and rebuilds its path caches by itself." -ForegroundColor Green
+  Done 0
 }
 
 # ---------------------------------------------------------------- revert
