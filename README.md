@@ -5,7 +5,9 @@ Shard: uosmallz.duckdns.org port 2593 (Age of Shadows era, client 7.0.23.1)
 
 WINDOWS (easy way)
   1. Download UOSmallz-Installer-win.zip and unzip it anywhere.
-  2. Double-click install.bat.
+  2. Double-click install.bat. (Run straight from inside the zip, it first
+     copies itself to %LOCALAPPDATA%\UOSmallz-installer and runs from there,
+     because Windows can delete the zip's temporary folder mid-install.)
   3. Press Enter to accept the default folder (%LOCALAPPDATA%\UOSmallz).
      If you already have the UO Classic 7.0.23.1 files, type that folder;
      otherwise press Enter and the installer downloads them (~930 MB).

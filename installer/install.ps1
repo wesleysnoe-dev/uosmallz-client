@@ -21,6 +21,51 @@ $UODataUrl     = "https://mirror.ashkantra.de/fullclients/7.0.23.1.exe"
 $UODataSha256  = "23b0548252bb4e6f39afbddac2e64f8deb862fbfaccb1303b87895d295e01839"
 $UODataVersion = "7.0.23.1"
 $ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ---------------------------------------------------------------------------
+# Run from inside the zip. Opening the zip in Explorer and double-clicking
+# install.bat runs it from a temporary folder (%TEMP%\<id>_<name>.zip.<n>\ on
+# Windows 11, %TEMP%\Temp1_<name>.zip\ before that) that Windows deletes when
+# it is done with the zip, sometimes while the install is still going: the
+# download finished, then map-merge.ps1 and update-check.ps1 were gone. So
+# the installer first copies its folder to one that stays
+# (%LOCALAPPDATA%\UOSmallz-installer) and runs that copy instead.
+#   UOSMALLZ_INSTALLER_COPY  where to copy it (tests)
+#   UOSMALLZ_RELAUNCH_ONLY=1 copy and report, do not run the copy (tests)
+# ---------------------------------------------------------------------------
+function Test-ZipTempDir([string]$dir, [string]$temp = [IO.Path]::GetTempPath()) {
+  if (-not $dir -or -not $temp) { return $false }
+  $d = [IO.Path]::GetFullPath($dir).TrimEnd('\', '/')
+  $t = [IO.Path]::GetFullPath($temp).TrimEnd('\', '/')
+  if (-not $d.StartsWith($t + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+  foreach ($part in $d.Substring($t.Length + 1).Split([char[]]@('\', '/'))) {
+    if ($part -match '(?i)\.zip(\.[0-9a-z]+)?$') { return $true }
+  }
+  return $false
+}
+
+if (Test-ZipTempDir $ScriptDir) {
+  $copy = if ($env:UOSMALLZ_INSTALLER_COPY) { $env:UOSMALLZ_INSTALLER_COPY } else { Join-Path $env:LOCALAPPDATA "UOSmallz-installer" }
+  $missing = @("install.ps1", "update-check.ps1", "map-merge.ps1", "launch.vbs") | Where-Object { -not (Test-Path -LiteralPath (Join-Path $ScriptDir $_)) }
+  if ($missing) {
+    Write-Host ""
+    Write-Host "[error] The installer is running from inside the zip, and Windows did not unpack all of it ($($missing -join ', ') missing)." -ForegroundColor Red
+    Write-Host "        Right-click the zip, choose Extract All, and run install.bat from the extracted folder."
+    Write-Host ""
+    Read-Host "Press Enter to close"
+    exit 1
+  }
+  Write-Host "    Running from inside the zip: copying the installer to $copy first."
+  New-Item -ItemType Directory -Force -Path $copy | Out-Null
+  Copy-Item -Path (Join-Path $ScriptDir "*") -Destination $copy -Recurse -Force
+  $again = Join-Path $copy "install.ps1"
+  if ($env:UOSMALLZ_RELAUNCH_ONLY -eq "1") { Write-Host "relaunch: $again"; exit 0 }
+  # The same PowerShell (5.1 or pwsh) in the same window, so the questions
+  # and the "Press Enter to close" stay where the player is looking.
+  & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $again
+  exit $LASTEXITCODE
+}
+
 # Shared with the launcher: release lookup, SHA256, version stamp, settings merge.
 . (Join-Path $ScriptDir "update-check.ps1") -NoMain -InstallRoot $ScriptDir
 
