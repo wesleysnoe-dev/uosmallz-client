@@ -22,8 +22,9 @@ UPDATES (Windows)
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
-  when you zoom in). Creatures and animations are unchanged.
-  The launcher offers it once the v4 client is installed: a ~530 MB
+  when you zoom in). Since v5 hillsides are HD too, and small icons and
+  button lettering are smoother. Creatures and animations are unchanged.
+  The launcher offers it once the v4 client is installed: a ~640 MB
   download from the UO Smallz server (uosmallz.duckdns.org port 2595), checked
   against hd-art.json in this repo, into an HDArt folder beside Client. Yes
   downloads it now, No asks again next time, Cancel never asks for that pack

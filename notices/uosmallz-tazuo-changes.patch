@@ -1096,19 +1096,54 @@ index 999f0e8..128d77f 100644
              base.Dispose();
          }
 diff --git a/src/ClassicUO.Assets/ExternalImageLoader.cs b/src/ClassicUO.Assets/ExternalImageLoader.cs
-index e321c54..9da6946 100644
+index e321c54..2c1e096 100644
 --- a/src/ClassicUO.Assets/ExternalImageLoader.cs
 +++ b/src/ClassicUO.Assets/ExternalImageLoader.cs
-@@ -11,7 +11,7 @@ namespace ClassicUO.Assets
+@@ -11,7 +11,11 @@ namespace ClassicUO.Assets
  {
      public class ExternalImageLoader
      {
 -        private const string IMAGES_FOLDER = "ExternalImages", GUMP_EXTERNAL_FOLDER = "gumps", ART_EXTERNAL_FOLDER = "art";
-+        private const string IMAGES_FOLDER = "ExternalImages", GUMP_EXTERNAL_FOLDER = "gumps", ART_EXTERNAL_FOLDER = "art", LAND_EXTERNAL_FOLDER = "land";
++        private const string IMAGES_FOLDER = "ExternalImages", GUMP_EXTERNAL_FOLDER = "gumps", ART_EXTERNAL_FOLDER = "art", LAND_EXTERNAL_FOLDER = "land",
++            TEXMAP_EXTERNAL_FOLDER = "texmaps";
++
++        // texmaps/0x0003.png replaces texture 3 (the stretched land of hills and slopes)
++        private Dictionary<uint, string> texmap_availableFilePaths = new Dictionary<uint, string>();
  
          private string exePath;
          private string _uoDirectory;
-@@ -317,6 +317,46 @@ namespace ClassicUO.Assets
+@@ -193,6 +197,30 @@ namespace ClassicUO.Assets
+             return new ArtInfo();
+         }
+ 
++        /// <summary>A texmaps/ replacement's pixels (not cached: the caller puts them on its atlas once).</summary>
++        public ArtInfo LoadTexmapTexture(uint idx)
++        {
++            if (GraphicsDevice == null || !texmap_availableFilePaths.TryGetValue(idx, out string path) || !File.Exists(path))
++                return new ArtInfo();
++
++            try
++            {
++                using FileStream stream = File.OpenRead(path);
++                Texture2D tex = Texture2D.FromStream(GraphicsDevice, stream);
++                if (tex == null)
++                    return new ArtInfo();
++                FixPNGAlpha(ref tex);
++                var info = new ArtInfo { Pixels = GetPixels(tex), Width = tex.Width, Height = tex.Height };
++                tex.Dispose();
++                return info;
++            }
++            catch (Exception ex)
++            {
++                Log.Error($"Failed to load texmap image '{path}': {ex.Message}");
++                return new ArtInfo();
++            }
++        }
++
+         private static Texture2D LoadBmp(GraphicsDevice gd, string path)
+         {
+             byte[] file = File.ReadAllBytes(path);
+@@ -317,6 +345,59 @@ namespace ClassicUO.Assets
              {
                  Directory.CreateDirectory(artPath);
              }
@@ -1125,13 +1160,24 @@ index e321c54..9da6946 100644
 +                }
 +            }
 +
++            string texmapPath = Path.Combine(exePath, IMAGES_FOLDER, TEXMAP_EXTERNAL_FOLDER);
++
++            if (Directory.Exists(texmapPath))
++            {
++                foreach (string file in FindImageFiles(texmapPath))
++                {
++                    if (TryParseId(Path.GetFileNameWithoutExtension(file), out uint tex))
++                        texmap_availableFilePaths[tex] = file;
++                }
++            }
++
 +            // An HD art pack (art/, gumps/, land/) in an HDArt folder beside the client folder: it stays put when a
 +            // launcher replaces the client folder on an update. Anything in ExternalImages wins over it.
 +            string pack = Path.GetFullPath(Path.Combine(exePath, "..", "HDArt"));
 +
 +            if (Directory.Exists(pack))
 +            {
-+                foreach (string folder in new[] { GUMP_EXTERNAL_FOLDER, ART_EXTERNAL_FOLDER, LAND_EXTERNAL_FOLDER })
++                foreach (string folder in new[] { GUMP_EXTERNAL_FOLDER, ART_EXTERNAL_FOLDER, LAND_EXTERNAL_FOLDER, TEXMAP_EXTERNAL_FOLDER })
 +                {
 +                    string dir = Path.Combine(pack, folder);
 +
@@ -1147,6 +1193,8 @@ index e321c54..9da6946 100644
 +                            gump_availableFilePaths.TryAdd(id, file);
 +                        else if (folder == ART_EXTERNAL_FOLDER)
 +                            art_availableFilePaths.TryAdd(id + 0x4000, file);
++                        else if (folder == TEXMAP_EXTERNAL_FOLDER)
++                            texmap_availableFilePaths.TryAdd(id, file);
 +                        else if (id < 0x4000)
 +                            art_availableFilePaths.TryAdd(id, file);
 +                    }
@@ -1212,6 +1260,20 @@ index e7fe4a0..80fc246 100644
 -            Renderable = new TextureRegion(landInfo.Texture, landInfo.UV);
 +            // PixelUV: on an HD atlas page UV is in the tile's own pixels, and Myra needs the page's
 +            Renderable = new TextureRegion(landInfo.Texture, landInfo.PixelUV);
+         }
+ 
+         MaxWidth = maxSize;
+diff --git a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraTexmapTexture.cs b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraTexmapTexture.cs
+index ad0b78b..3c5fe01 100644
+--- a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraTexmapTexture.cs
++++ b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraTexmapTexture.cs
+@@ -23,7 +23,8 @@ public class MyraTexmapTexture : Image
+             // texInfo.UV is the sub-rectangle within the shared atlas texture.
+             // Passing just the Texture2D would render the entire atlas page;
+             // supplying texInfo.UV scopes it to only this sprite.
+-            Renderable = new TextureRegion(texInfo.Texture, texInfo.UV);
++            // PixelUV: on an HD atlas page UV is in the texture's own pixels, and Myra needs the page's
++            Renderable = new TextureRegion(texInfo.Texture, texInfo.PixelUV);
          }
  
          MaxWidth = maxSize;
@@ -1785,6 +1847,53 @@ index 8ca167e..e79444e 100644
          public static readonly SpriteInfo Empty = new SpriteInfo { Texture = null };
      }
  }
+diff --git a/src/ClassicUO.Renderer/Texmaps/Texmap.cs b/src/ClassicUO.Renderer/Texmaps/Texmap.cs
+index 74a4ac9..f5c1c98 100644
+--- a/src/ClassicUO.Renderer/Texmaps/Texmap.cs
++++ b/src/ClassicUO.Renderer/Texmaps/Texmap.cs
+@@ -9,14 +9,20 @@ namespace ClassicUO.Renderer.Texmaps
+         private readonly SpriteInfo[] _spriteInfos;
+         private readonly PixelPicker _picker = new PixelPicker(true);
+         private readonly TexmapsLoader _texmapsLoader;
++        private readonly GraphicsDevice _device;
++        private readonly TextureAtlas[] _hdAtlases = new TextureAtlas[5];
+ 
+         public Texmap(TexmapsLoader texmapsLoader, GraphicsDevice device)
+         {
+             _texmapsLoader = texmapsLoader;
++            _device = device;
+             _atlas = new TextureAtlas(device, 2048, 2048, SurfaceFormat.Color);
+             _spriteInfos = new SpriteInfo[texmapsLoader.File.Entries.Length];
+         }
+ 
++        private TextureAtlas HdAtlas(int scale) =>
++            _hdAtlases[scale] ??= new TextureAtlas(_device, 4096, 4096, SurfaceFormat.Color, scale);
++
+         public ref readonly SpriteInfo GetTexmap(uint idx)
+         {
+             if (idx >= _spriteInfos.Length)
+@@ -29,14 +35,15 @@ namespace ClassicUO.Renderer.Texmaps
+                 TexmapInfo texmapInfo = _texmapsLoader.GetTexmap(idx);
+                 if (!texmapInfo.Pixels.IsEmpty)
+                 {
+-                    spriteInfo.Texture = _atlas.AddSprite(
+-                        texmapInfo.Pixels,
+-                        texmapInfo.Width,
+-                        texmapInfo.Height,
+-                        out spriteInfo.UV
+-                    );
++                    // an HD version (ExternalImages or HDArt texmaps/, exactly 2x-4x) draws at the texture's own size; see Art.HdScale
++                    ArtInfo hd = ExternalImageLoader.Instance.LoadTexmapTexture(idx);
++                    int scale = hd.Pixels.IsEmpty ? 1 : Arts.Art.HdScale(hd.Width, hd.Height, texmapInfo.Width, texmapInfo.Height);
+ 
+                     _picker.Set(idx, texmapInfo.Width, texmapInfo.Height, texmapInfo.Pixels);
++
++                    spriteInfo.Texture = scale > 1
++                        ? HdAtlas(scale).AddSprite(hd.Pixels, hd.Width, hd.Height, out spriteInfo.UV)
++                        : _atlas.AddSprite(texmapInfo.Pixels, texmapInfo.Width, texmapInfo.Height, out spriteInfo.UV);
+                 }
+             }
+ 
 diff --git a/src/ClassicUO.Renderer/TextureAtlas.cs b/src/ClassicUO.Renderer/TextureAtlas.cs
 index 713d30c..989c4d1 100644
 --- a/src/ClassicUO.Renderer/TextureAtlas.cs
