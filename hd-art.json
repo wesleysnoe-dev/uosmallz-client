@@ -1,5 +1,15 @@
 {
   "file": "UOSmallz-HDArt-2x.zip",
   "size": 667911622,
-  "sha256": "8ac8351a65fb93110c2dd7a5aa43201b6d843c1466efaae897d59230a6baec07"
+  "sha256": "8ac8351a65fb93110c2dd7a5aa43201b6d843c1466efaae897d59230a6baec07",
+  "creatures": {
+    "frames": 767589,
+    "files": [
+      { "file": "UOSmallz-HDAnim-1.uoanim", "size": 1073685014, "sha256": "f99a286d455ba317a5c7d9272c6b29d88de1220afe314772f3f2c2d35110aa83" },
+      { "file": "UOSmallz-HDAnim-2.uoanim", "size": 1073730320, "sha256": "2f3309b249ee9647a050665f275b3836f6a7f3231860af5d5d26644998fb6657" },
+      { "file": "UOSmallz-HDAnim-3.uoanim", "size": 1073569694, "sha256": "f196b5b6d899d5443d709257254e4fbcf34021393be3f96d1ccbe6d7bc865cab" },
+      { "file": "UOSmallz-HDAnim-4.uoanim", "size": 1073664356, "sha256": "2d50362b97dc042858fd8d6b430f14c77c815ecb73d8508dc3f84f38bb48df0d" },
+      { "file": "UOSmallz-HDAnim-5.uoanim", "size": 744633221, "sha256": "a6accf4d7afaad34af0cc50deb865ba17865966139037b73eaaa7c22e34179ee" }
+    ]
+  }
 }

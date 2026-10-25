@@ -125,6 +125,9 @@ jobs:
           mkdir -p cuo/dist/notices
           cp smallz/notices/LICENSE-TazUO-ClassicUO.txt smallz/notices/NOTICE.txt cuo/dist/notices/
           cat smallz/patches/client/*.patch > cuo/dist/notices/uosmallz-tazuo-changes.patch
+          # the launcher rides along: update-check.ps1 copies these over itself after an update
+          mkdir -p cuo/dist/launcher
+          cp smallz/installer/update-check.ps1 smallz/installer/launch.vbs cuo/dist/launcher/
 
       - name: Zip
         shell: pwsh

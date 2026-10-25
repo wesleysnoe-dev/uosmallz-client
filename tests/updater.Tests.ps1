@@ -421,6 +421,73 @@ Check ($threw -and (Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack o
 Check (-not (Test-Path -LiteralPath (Join-Path $root "HDArt.new"))) "hd art: nothing half-unpacked left behind"
 Install-HdArt $root $z2 (Get-Sha256 $z2)
 Check ((Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack two" -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt.old"))) "hd art: a new pack replaces the old one"
+Set-File (Join-Path $root "HDArt\anim\a-1.uoanim") "creatures"
+$z3 = New-FakePack $root "pack three"
+Install-HdArt $root $z3 (Get-Sha256 $z3)
+Check ((Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack three" -and (Read-F (Join-Path $root "HDArt\anim\a-1.uoanim")) -eq "creatures") "hd art: a new pack keeps the creatures in HDArt\anim"
+Remove-Item $root -Recurse -Force
+
+# ---- launcher rides along with the client ----
+$root = New-Root
+Set-File (Join-Path $root "update-check.ps1") "old launcher"
+Set-File (Join-Path $root "launch.vbs") "same vbs"
+Set-File (Join-Path $root "Client\launcher\update-check.ps1") "new launcher"
+Set-File (Join-Path $root "Client\launcher\launch.vbs") "same vbs"
+$l = Update-LauncherFiles $root
+Check ((Read-F (Join-Path $root "update-check.ps1")) -eq "new launcher" -and ($l -join ",") -eq "update-check.ps1") "launcher: a client update brings the new launcher, unchanged files left alone"
+Check (-not (Test-Path -LiteralPath (Join-Path $root "update-check.ps1.new"))) "launcher: no temp file left"
+Remove-Item (Join-Path $root "Client\launcher") -Recurse -Force
+Check ((Update-LauncherFiles $root).Count -eq 0 -and (Read-F (Join-Path $root "update-check.ps1")) -eq "new launcher") "launcher: a client without launcher\ changes nothing"
+Remove-Item $root -Recurse -Force
+
+# ---- HD creatures ----
+$m = [pscustomobject]@{ creatures = [pscustomobject]@{ files = @(
+    [pscustomobject]@{ file = "UOSmallz-HDAnim-1.uoanim"; size = 10; sha256 = $good },
+    [pscustomobject]@{ file = "UOSmallz-HDAnim-2.uoanim"; size = 20; sha256 = ("b" * 64).ToUpper() }) } }
+$ci = Get-HdCreaturesInfo $m
+Check ($ci -and $ci.Files.Count -eq 2 -and $ci.Size -eq 30 -and $ci.Files[1].Url -eq "${HdArtBaseUrl}UOSmallz-HDAnim-2.uoanim" -and $ci.Files[1].Sha256 -eq ("b" * 64) -and $ci.Id -match '^[0-9a-f]{64}$') "hd creatures: manifest read, URLs from the allowlisted server only"
+Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ file = "x.zip"; size = 1; sha256 = $good }))) "hd creatures: a manifest without them offers nothing"
+Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @([pscustomobject]@{ file = "..\a.uoanim"; size = 1; sha256 = $good }) } }))) "hd creatures: a path in a file name is refused"
+Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @([pscustomobject]@{ file = "a.exe"; size = 1; sha256 = $good }) } }))) "hd creatures: only .uoanim is accepted"
+Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @() } }))) "hd creatures: an empty list offers nothing"
+
+$root = New-Root
+Set-File (Join-Path $root "Client\ClassicUO.Assets.dll") "...ClassicUO.Assets.ExternalImageLoader..."
+Check (-not (Test-ClientDrawsHdCreatures (Join-Path $root "Client"))) "hd creatures: a client without the hook is not offered them"
+Set-File (Join-Path $root "Client\ClassicUO.Assets.dll") "...ClassicUO.Assets.HdAnimations..."
+Check (Test-ClientDrawsHdCreatures (Join-Path $root "Client")) "hd creatures: a client with it is"
+
+# the server: a folder of files, Save-UrlWithTimeout copies from it
+$srv = Join-Path $root "server"
+function New-ServedFile([string]$name, [string]$text) { Set-File (Join-Path $srv $name) $text; $f = Join-Path $srv $name; return [pscustomobject]@{ file = $name; size = (Get-Item $f).Length; sha256 = (Get-Sha256 $f) } }
+$script:fetched = @()
+function Save-UrlWithTimeout([string]$url, [string]$out) {
+    $name = $url.Substring($HdArtBaseUrl.Length)
+    $script:fetched += $name
+    if (-not (Test-Path -LiteralPath (Join-Path $srv $name))) { throw "404 $name" }
+    Copy-Item -LiteralPath (Join-Path $srv $name) -Destination $out
+}
+$e1 = New-ServedFile "C-1.uoanim" "part one"
+$e2 = New-ServedFile "C-2.uoanim" "part two"
+$set1 = Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @($e1, $e2) } })
+Install-HdCreatures $root $set1
+Check ((Read-F (Join-Path $root "HDArt\anim\C-1.uoanim")) -eq "part one" -and (Read-F (Join-Path $root "HDArt\anim\C-2.uoanim")) -eq "part two") "hd creatures: installed into HDArt\anim"
+Check ((Read-HdArtStamp (Join-Path $root "hdanim-version.json")) -eq $set1.Id) "hd creatures: stamp names the installed set"
+
+$script:fetched = @()
+$e2b = New-ServedFile "C-2b.uoanim" "part two, new"
+$set2 = Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @($e1, $e2b) } })
+Install-HdCreatures $root $set2
+Check (($script:fetched -join ",") -eq "C-2b.uoanim") "hd creatures: an update fetches only the parts that changed"
+Check (-not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-2.uoanim")) -and (Read-F (Join-Path $root "HDArt\anim\C-2b.uoanim")) -eq "part two, new") "hd creatures: a part the set no longer names is removed"
+
+$bad = [pscustomobject]@{ file = "C-3.uoanim"; size = 8; sha256 = $good }
+Set-File (Join-Path $srv "C-3.uoanim") "tampered"
+$e4 = New-ServedFile "C-4.uoanim" "part four"
+$set3 = Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @($e1, $e4, $bad) } })
+$threw = $false; try { Install-HdCreatures $root $set3 } catch { $threw = $true }
+Check ($threw -and (Read-F (Join-Path $root "HDArt\anim\C-4.uoanim")) -eq "part four" -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-3.uoanim")) -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-3.uoanim.part"))) "hd creatures: a part that doesn't match is refused; the good ones are kept"
+Check ((Read-HdArtStamp (Join-Path $root "hdanim-version.json")) -eq $set2.Id -and (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-2b.uoanim"))) "hd creatures: after a failure the stamp and the old parts stay, so it is offered again"
 Remove-Item $root -Recurse -Force
 
 Write-Host ""

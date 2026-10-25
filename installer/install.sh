@@ -9,7 +9,9 @@ CLIENT_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/dow
 SUMS_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/download/SHA256SUMS.txt
 # HD art (tools/hd-art in uo-offline-dev): ~0.5 GB from the UO Smallz server itself into $ROOT/HDArt
 # (the client reads it from beside its folder), checked against hd-art.json in this repo. Fetched
-# again only when hd-art.json names a new pack. INSTALL_HD_ART=0 to skip.
+# again only when hd-art.json names a new pack. INSTALL_HD_ART=0 to skip. The HD creatures (several
+# .uoanim files of about 1 GB, listed in hd-art.json under "creatures") go to $ROOT/HDArt/anim the
+# same way; INSTALL_HD_CREATURES=0 to skip them.
 HD_ART_MANIFEST=https://raw.githubusercontent.com/wesleysnoe-dev/uosmallz-client/main/hd-art.json
 HD_ART_BASE=http://uosmallz.duckdns.org:2595/
 # Same mirror, file and hash as the UO Offline installer.
@@ -222,6 +224,8 @@ install_hd_art() {
   echo "$sha  $zip" | sha256sum -c --quiet - || { rm -f "$zip"; warn "The HD art download didn't match hd-art.json; deleted."; return 0; }
   rm -rf "$ROOT/HDArt.new" "$ROOT/HDArt.old"
   unzip -q "$zip" -d "$ROOT/HDArt.new" && [[ -d "$ROOT/HDArt.new/art" ]] || { rm -rf "$ROOT/HDArt.new"; warn "Could not unpack the HD art; the art you had stays."; return 0; }
+  # the creatures stay
+  [[ -d "$ROOT/HDArt/anim" && ! -e "$ROOT/HDArt.new/anim" ]] && mv "$ROOT/HDArt/anim" "$ROOT/HDArt.new/anim"
   [[ -d "$ROOT/HDArt" ]] && mv "$ROOT/HDArt" "$ROOT/HDArt.old"
   mv "$ROOT/HDArt.new" "$ROOT/HDArt"
   rm -rf "$ROOT/HDArt.old" "$zip"
@@ -230,6 +234,40 @@ install_hd_art() {
 }
 install_hd_art
 
+# HD creatures: only for a client with the animation hook (HdAnimations). Each part is kept when it is
+# already there and right, else fetched as .part (carrying on a broken one), checked, and moved in.
+install_hd_creatures() {
+  banner "HD creatures"
+  [[ "${INSTALL_HD_CREATURES:-1}" == "1" ]] || { say "Skipped (INSTALL_HD_CREATURES=0)."; return 0; }
+  grep -aq HdAnimations "$ROOT/Client/ClassicUO.Assets.dll" 2>/dev/null || { warn "This client can't draw HD creatures yet; skipped."; return 0; }
+  local m list file size sha dir="$ROOT/HDArt/anim" total=0 n=0 i=0 keep=" "
+  m="$(curl -fsSL -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD creatures skipped."; return 0; }
+  list="$(printf '%s' "$m" | python3 -c 'import json,sys
+for f in json.load(sys.stdin).get("creatures", {}).get("files", []): print(f["file"], int(f["size"]), str(f["sha256"]).lower())' 2>/dev/null)" || list=""
+  [[ -n "$list" ]] || { say "No HD creatures listed yet."; return 0; }
+  while read -r file size sha; do
+    if [[ ! "$file" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.uoanim$ || ! "$sha" =~ ^[0-9a-f]{64}$ || "$size" -le 0 ]]; then
+      warn "hd-art.json is not valid; HD creatures skipped."; return 0
+    fi
+    total=$(( total + size )); n=$(( n + 1 ))
+  done <<< "$list"
+  mkdir -p "$dir"
+  say "$n parts, $(( total / 1048576 )) MB in all from the UO Smallz server."
+  while read -r file size sha; do
+    i=$(( i + 1 )); keep="$keep$file "
+    if [[ -f "$dir/$file" && "$(stat -c %s "$dir/$file")" == "$size" ]] && echo "$sha  $dir/$file" | sha256sum -c --quiet - 2>/dev/null; then
+      say "Part $i of $n: up to date."; continue
+    fi
+    say "Part $i of $n: $(( size / 1048576 )) MB..."
+    curl -fL -C - --progress-bar -A "$UA" -o "$dir/$file.part" "${HD_ART_BASE}${file}" || { warn "HD creatures download failed; run install.sh again to carry on."; return 0; }
+    echo "$sha  $dir/$file.part" | sha256sum -c --quiet - || { rm -f "$dir/$file.part"; warn "Part $i didn't match hd-art.json; deleted. Run install.sh again."; return 0; }
+    mv -f "$dir/$file.part" "$dir/$file"
+  done <<< "$list"
+  # parts an older set had
+  for f in "$dir"/*; do if [[ -f "$f" && "$keep" != *" $(basename "$f") "* ]]; then rm -f "$f"; fi; done
+  ok "HD creatures: $dir"
+}
+install_hd_creatures
 mkdir -p "$HOME/.local/share/applications"
 cat > "$HOME/.local/share/applications/uosmallz.desktop" <<D
 [Desktop Entry]

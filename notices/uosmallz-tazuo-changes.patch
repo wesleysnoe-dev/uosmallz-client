@@ -1096,7 +1096,7 @@ index 999f0e8..128d77f 100644
              base.Dispose();
          }
 diff --git a/src/ClassicUO.Assets/ExternalImageLoader.cs b/src/ClassicUO.Assets/ExternalImageLoader.cs
-index e321c54..2c1e096 100644
+index e321c54..b6b8c8b 100644
 --- a/src/ClassicUO.Assets/ExternalImageLoader.cs
 +++ b/src/ClassicUO.Assets/ExternalImageLoader.cs
 @@ -11,7 +11,11 @@ namespace ClassicUO.Assets
@@ -1143,7 +1143,7 @@ index e321c54..2c1e096 100644
          private static Texture2D LoadBmp(GraphicsDevice gd, string path)
          {
              byte[] file = File.ReadAllBytes(path);
-@@ -317,6 +345,59 @@ namespace ClassicUO.Assets
+@@ -317,6 +345,62 @@ namespace ClassicUO.Assets
              {
                  Directory.CreateDirectory(artPath);
              }
@@ -1200,9 +1200,187 @@ index e321c54..2c1e096 100644
 +                    }
 +                }
 +            }
++
++            // HD animation frames: .uoanim packs in ExternalImages/anim and HDArt/anim
++            HdAnimations.Instance.Load(exePath);
          }
  
          public void LoadResourceAssets(GumpsLoader gumps)
+diff --git a/src/ClassicUO.Assets/HdAnimations.cs b/src/ClassicUO.Assets/HdAnimations.cs
+new file mode 100644
+index 0000000..8d97017
+--- /dev/null
++++ b/src/ClassicUO.Assets/HdAnimations.cs
+@@ -0,0 +1,169 @@
++using System;
++using System.Buffers.Binary;
++using System.Collections.Generic;
++using System.IO;
++using System.Numerics;
++using System.Text;
++using ClassicUO.Utility.Logging;
++using Microsoft.Win32.SafeHandles;
++using Microsoft.Xna.Framework.Graphics;
++
++namespace ClassicUO.Assets
++{
++    /// <summary>
++    ///     HD animation frames (creatures, people, what they wear): .uoanim packs in ExternalImages/anim, or in
++    ///     HDArt/anim beside the client folder. A frame is found by a hash of the pixels the loader decoded
++    ///     (<see cref="KeyOf"/>), not by body, action and direction, so body conversions, UOP group replacements and
++    ///     frames shared between bodies need nothing here. tools/hd-art in UO Offline writes them (Creatures.cs):
++    ///     "UOHDANI1", int scale, int count, count entries of (u64 key, i64 offset, i32 length) sorted by key, then
++    ///     the frames as PNGs at scale times the original. Reads are thread-safe.
++    /// </summary>
++    public sealed class HdAnimations
++    {
++        private const string Magic = "UOHDANI1";
++        private const int HeaderSize = 16, EntrySize = 20;
++
++        public static HdAnimations Instance { get; } = new HdAnimations();
++
++        private sealed class Pack
++        {
++            public SafeFileHandle File;
++            public ulong[] Keys;
++            public long[] Offsets;
++            public int[] Lengths;
++        }
++
++        private readonly List<Pack> _packs = new List<Pack>();
++
++        public bool Any => _packs.Count > 0;
++
++        /// <summary>ExternalImages/anim first, so a pack there wins over HDArt/anim.</summary>
++        public void Load(string exePath)
++        {
++            foreach (string dir in new[] { Path.Combine(exePath, "ExternalImages", "anim"), Path.GetFullPath(Path.Combine(exePath, "..", "HDArt", "anim")) })
++            {
++                if (!Directory.Exists(dir))
++                    continue;
++
++                string[] files = Directory.GetFiles(dir, "*.uoanim");
++                Array.Sort(files, StringComparer.Ordinal);
++
++                foreach (string file in files)
++                {
++                    try
++                    {
++                        _packs.Add(Open(file));
++                    }
++                    catch (Exception ex)
++                    {
++                        Log.Error($"HD animations: skipping {file}: {ex.Message}");
++                    }
++                }
++            }
++
++            if (_packs.Count > 0)
++            {
++                long frames = 0;
++                foreach (Pack p in _packs)
++                    frames += p.Keys.Length;
++                Log.Trace($"HD animations: {frames} frames in {_packs.Count} packs");
++            }
++        }
++
++        private static Pack Open(string path)
++        {
++            SafeFileHandle h = File.OpenHandle(path);
++            try
++            {
++                var head = new byte[HeaderSize];
++                Read(h, head, 0);
++                if (Encoding.ASCII.GetString(head, 0, 8) != Magic)
++                    throw new InvalidDataException("not a .uoanim pack");
++
++                int count = BinaryPrimitives.ReadInt32LittleEndian(head.AsSpan(12));
++                var index = new byte[(long)count * EntrySize];
++                Read(h, index, HeaderSize);
++
++                var pack = new Pack { File = h, Keys = new ulong[count], Offsets = new long[count], Lengths = new int[count] };
++                for (int i = 0; i < count; i++)
++                {
++                    ReadOnlySpan<byte> e = index.AsSpan(i * EntrySize, EntrySize);
++                    pack.Keys[i] = BinaryPrimitives.ReadUInt64LittleEndian(e);
++                    pack.Offsets[i] = BinaryPrimitives.ReadInt64LittleEndian(e.Slice(8));
++                    pack.Lengths[i] = BinaryPrimitives.ReadInt32LittleEndian(e.Slice(16));
++                }
++                return pack;
++            }
++            catch
++            {
++                h.Dispose();
++                throw;
++            }
++        }
++
++        private static void Read(SafeFileHandle h, byte[] buffer, long offset)
++        {
++            int read = 0;
++            while (read < buffer.Length)
++            {
++                int n = RandomAccess.Read(h, buffer.AsSpan(read), offset + read);
++                if (n <= 0)
++                    throw new EndOfStreamException();
++                read += n;
++            }
++        }
++
++        /// <summary>The frame's key: the same as AnimFrame.KeyOf in tools/hd-art, over the decoded 0xAABBGGRR pixels.</summary>
++        public static ulong KeyOf(ReadOnlySpan<uint> pixels, int width, int height)
++        {
++            ulong h = 0x9E3779B97F4A7C15UL ^ (uint)(width | height << 16);
++            foreach (uint p in pixels)
++                h = BitOperations.RotateLeft((h ^ p) * 0x9E3779B97F4A7C15UL, 27);
++            h ^= h >> 33;
++            h *= 0xFF51AFD7ED558CCDUL;
++            h ^= h >> 33;
++            h *= 0xC4CEB9FE1A85EC53UL;
++            h ^= h >> 33;
++            return h;
++        }
++
++        /// <summary>The HD frame for these decoded pixels, premultiplied as the atlas wants them, or false.</summary>
++        public bool TryGet(ReadOnlySpan<uint> pixels, int width, int height, out uint[] hd, out int hdWidth, out int hdHeight)
++        {
++            hd = null;
++            hdWidth = hdHeight = 0;
++            if (_packs.Count == 0 || width <= 0 || height <= 0 || pixels.Length < width * height)
++                return false;
++
++            ulong key = KeyOf(pixels.Slice(0, width * height), width, height);
++            foreach (Pack p in _packs)
++            {
++                int i = Array.BinarySearch(p.Keys, key);
++                if (i < 0)
++                    continue;
++
++                try
++                {
++                    var png = new byte[p.Lengths[i]];
++                    Read(p.File, png, p.Offsets[i]);
++                    Texture2D.TextureDataFromStreamEXT(new MemoryStream(png), out hdWidth, out hdHeight, out byte[] rgba);
++                    hd = new uint[hdWidth * hdHeight];
++                    for (int k = 0; k < hd.Length; k++)
++                    {
++                        // RGBA bytes are 0xAABBGGRR as a uint, premultiplied like ExternalImageLoader's PNGs
++                        uint a = rgba[k * 4 + 3];
++                        hd[k] = a == 255 ? BinaryPrimitives.ReadUInt32LittleEndian(rgba.AsSpan(k * 4)) :
++                            a == 0 ? 0 : a << 24 | (rgba[k * 4 + 2] * a / 255) << 16 | (rgba[k * 4 + 1] * a / 255) << 8 | rgba[k * 4] * a / 255;
++                    }
++                    return true;
++                }
++                catch (Exception ex)
++                {
++                    Log.Error($"HD animations: frame {key:x16}: {ex.Message}");
++                    return false;
++                }
++            }
++            return false;
++        }
++    }
++}
 diff --git a/src/ClassicUO.Client/Game/Data/StaticFilters.cs b/src/ClassicUO.Client/Game/Data/StaticFilters.cs
 index a04bd09..2fab1f1 100644
 --- a/src/ClassicUO.Client/Game/Data/StaticFilters.cs
@@ -1277,6 +1455,61 @@ index ad0b78b..3c5fe01 100644
          }
  
          MaxWidth = maxSize;
+diff --git a/src/ClassicUO.Renderer/Animations/Animation.cs b/src/ClassicUO.Renderer/Animations/Animation.cs
+index 3c84ae2..a555c31 100644
+--- a/src/ClassicUO.Renderer/Animations/Animation.cs
++++ b/src/ClassicUO.Renderer/Animations/Animation.cs
+@@ -18,13 +18,20 @@ namespace ClassicUO.Renderer.Animations
+ 
+         private AnimationDirection[][][] _cache;
+ 
++        private readonly GraphicsDevice _device;
++        private readonly TextureAtlas[] _hdAtlases = new TextureAtlas[5];
++
+ 
+         public Animations(AnimationsLoader animationLoader, GraphicsDevice device)
+         {
+             _animationLoader = animationLoader;
++            _device = device;
+             _atlas = new TextureAtlas(device, 4096, 4096, SurfaceFormat.Color);
+         }
+ 
++        private TextureAtlas HdAtlas(int scale) =>
++            _hdAtlases[scale] ??= new TextureAtlas(_device, 4096, 4096, SurfaceFormat.Color, scale);
++
+         private ref AnimationDirection GetSprite(int body, int action, int dir)
+         {
+             if (_cache == null)
+@@ -414,12 +421,23 @@ namespace ClassicUO.Renderer.Animations
+ 
+                     spriteInfo.Center.X = frame.CenterX;
+                     spriteInfo.Center.Y = frame.CenterY;
+-                    spriteInfo.Texture = _atlas.AddSprite(
+-                        frame.Pixels.AsSpan(),
+-                        frame.Width,
+-                        frame.Height,
+-                        out spriteInfo.UV
+-                    );
++
++                    // an HD frame (HDArt/anim, exactly 2x-4x) draws at the frame's own size; hit tests keep the
++                    // original pixels (the picker above); see Art.HdScale
++                    int scale = 1;
++                    uint[] hd = null;
++                    int hdWidth = 0, hdHeight = 0;
++                    if (HdAnimations.Instance.Any && HdAnimations.Instance.TryGet(frame.Pixels, frame.Width, frame.Height, out hd, out hdWidth, out hdHeight))
++                        scale = Arts.Art.HdScale(hdWidth, hdHeight, frame.Width, frame.Height);
++
++                    spriteInfo.Texture = scale > 1
++                        ? HdAtlas(scale).AddSprite(hd, hdWidth, hdHeight, out spriteInfo.UV)
++                        : _atlas.AddSprite(
++                            frame.Pixels.AsSpan(),
++                            frame.Width,
++                            frame.Height,
++                            out spriteInfo.UV
++                        );
+                 }
+                 }
+                 finally
 diff --git a/src/ClassicUO.Renderer/Arts/Art.cs b/src/ClassicUO.Renderer/Arts/Art.cs
 index c3c0987..47f6231 100644
 --- a/src/ClassicUO.Renderer/Arts/Art.cs

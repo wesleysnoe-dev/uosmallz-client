@@ -23,23 +23,27 @@ HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
   when you zoom in). Since v5 hillsides are HD too, and small icons and
-  button lettering are smoother. Creatures and animations are unchanged.
-  The launcher offers it once the v4 client is installed: a ~640 MB
-  download from the UO Smallz server (uosmallz.duckdns.org port 2595), checked
-  against hd-art.json in this repo, into an HDArt folder beside Client. Yes
-  downloads it now, No asks again next time, Cancel never asks for that pack
-  again. Client updates don't touch it. To go back to the original art,
-  delete the HDArt folder.
-  Installed before v4? The client update arrives as usual, but the HD art
+  button lettering are smoother. Since v6 creatures, people and what they
+  wear are HD too (every frame of every animation).
+  The launcher offers them once a client that draws them is installed: the
+  art (~640 MB) and then the creatures (~4.7 GB, five files, so a broken
+  download only redoes one), from the UO Smallz server (uosmallz.duckdns.org
+  port 2595), checked against hd-art.json in this repo, into an HDArt folder
+  beside Client (creatures in HDArt\anim). Yes downloads now, No asks again
+  next time, Cancel never asks for that pack again. Client updates don't
+  touch them. To go back to the original art, delete the HDArt folder (or
+  just HDArt\anim for the original creatures).
+  Installed before v6? The client update arrives as usual, but the creatures
   offer comes from the new launcher: download the new UOSmallz-Installer-win.zip
-  and run install.bat once (it keeps your settings).
+  and run install.bat once more (it keeps your settings). From v6 on the
+  launcher updates itself along with the client, so this is the last time.
 
 LINUX
   Run install.sh from the installer zip. Needs curl, unzip, python3, p7zip,
   and unar (or unrar / 7zz). pwsh (PowerShell) is needed to paste intact
   Magincia onto the map; without it Magincia is bare ground.
-  It installs the latest client and the HD art (INSTALL_HD_ART=0 to skip);
-  run it again to update both.
+  It installs the latest client, the HD art and the HD creatures
+  (INSTALL_HD_ART=0 / INSTALL_HD_CREATURES=0 to skip); run it again to update.
 
 LOGGING IN
   New player: type any new username and password at the login screen.
@@ -80,5 +84,5 @@ MANUAL SETUP (no installer)
 ## License
   The client is TazUO (https://github.com/PlayTazUO/TazUO), a ClassicUO fork,
   BSD 2-Clause, with small UO Smallz changes (chat window, Groups button,
-  HD art drawn at the art's own size).
+  HD art and creatures drawn at the art's own size).
   See the notices folder: license, notice, and the full change patch.

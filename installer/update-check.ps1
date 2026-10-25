@@ -17,6 +17,8 @@
 #   - HD art: once the client can draw it, offer the pack (Yes / No / Cancel =
 #     don't ask again) from the UO Smallz server into HDArt beside Client,
 #     checked against hd-art.json; again only when hd-art.json names a new one.
+#   - HD creatures: the same for the animation packs (creatures, people and
+#     clothes, several files of about 1 GB) into HDArt\anim, asked separately.
 #
 # Windows PowerShell 5.1. No token: the repo is public. Patterns (timeout,
 # silent failure, dialog, skip, launch.log) follow uo-offline-dev's
@@ -70,6 +72,9 @@ function Get-Paths([string]$root) {
         HdArtOld   = Join-Path $root "HDArt.old"
         HdArtStamp = Join-Path $root "hdart-version.json"
         HdArtSkip  = Join-Path $root "hdart-skipped.txt"
+        HdAnim      = Join-Path (Join-Path $root "HDArt") "anim"
+        HdAnimStamp = Join-Path $root "hdanim-version.json"
+        HdAnimSkip  = Join-Path $root "hdanim-skipped.txt"
     }
 }
 
@@ -473,6 +478,26 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
     }
 }
 
+# The client zip (checked against the release's SHA-256) carries this launcher
+# in launcher\: after an update, the launcher files in the install folder are
+# replaced by those, so launcher changes reach players with the client. This
+# run goes on with the code it already loaded; the next start uses the new one.
+function Update-LauncherFiles([string]$root) {
+    $p = Get-Paths $root
+    $src = Join-Path $p.Client "launcher"
+    $changed = @()
+    foreach ($f in @("update-check.ps1", "launch.vbs")) {
+        $from = Join-Path $src $f
+        $to = Join-Path $root $f
+        if (-not (Test-Path -LiteralPath $from)) { continue }
+        if ((Test-Path -LiteralPath $to) -and (Get-Sha256 $from) -eq (Get-Sha256 $to)) { continue }
+        Copy-Item -LiteralPath $from -Destination "$to.new" -Force
+        Move-Item -LiteralPath "$to.new" -Destination $to -Force
+        $changed += $f
+    }
+    return $changed
+}
+
 # ---- client settings (used by install.ps1) -------------------------------
 
 # Create settings.json, or fill in only what an existing one lacks. A
@@ -550,7 +575,7 @@ function Write-HdArtStamp([string]$path, [string]$sha) {
 }
 
 # Check the zip, unpack it beside the installed pack, then swap. On any failure
-# the pack that was there stays.
+# the pack that was there stays. HDArt\anim (the creatures) moves across.
 function Install-HdArt([string]$root, [string]$zip, [string]$expectedSha) {
     $p = Get-Paths $root
     if (-not (Test-Sha256 $zip $expectedSha)) { throw "the download does not match hd-art.json (SHA-256)" }
@@ -566,30 +591,155 @@ function Install-HdArt([string]$root, [string]$zip, [string]$expectedSha) {
         Remove-Item -LiteralPath $p.HdArtNew -Recurse -Force -ErrorAction SilentlyContinue
         throw $err
     }
-    if (Test-Path -LiteralPath $p.HdArt) { Rename-Item -LiteralPath $p.HdArt -NewName "HDArt.old" }
+    $animNew = Join-Path $p.HdArtNew "anim"
+    $movedAnim = $false
+    if ((Test-Path -LiteralPath $p.HdAnim) -and -not (Test-Path -LiteralPath $animNew)) {
+        Move-Item -LiteralPath $p.HdAnim -Destination $animNew
+        $movedAnim = $true
+    }
     try {
+        if (Test-Path -LiteralPath $p.HdArt) { Rename-Item -LiteralPath $p.HdArt -NewName "HDArt.old" }
         Rename-Item -LiteralPath $p.HdArtNew -NewName "HDArt"
     } catch {
         $err = $_
-        if (Test-Path -LiteralPath $p.HdArtOld) { Rename-Item -LiteralPath $p.HdArtOld -NewName "HDArt" }
+        if ((Test-Path -LiteralPath $p.HdArtOld) -and -not (Test-Path -LiteralPath $p.HdArt)) { Rename-Item -LiteralPath $p.HdArtOld -NewName "HDArt" }
+        if ($movedAnim -and (Test-Path -LiteralPath $animNew)) { Move-Item -LiteralPath $animNew -Destination $p.HdAnim }
         throw $err
     }
     Write-HdArtStamp $p.HdArtStamp $expectedSha
     Remove-Item -LiteralPath $p.HdArtOld -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# ---- HD creatures --------------------------------------------------------
+# Creatures, people and clothes: .uoanim packs in HDArt\anim, which the client
+# (HdAnimations) finds by the pixels of each frame. hd-art.json lists them under
+# "creatures" with size and SHA-256; several files, so a broken download costs
+# only one. hdanim-version.json holds the set installed, hdanim-skipped.txt the
+# set the player said not to ask about.
+
+function Test-ClientDrawsHdCreatures([string]$clientDir) {
+    $dll = Join-Path $clientDir "ClassicUO.Assets.dll"
+    if (-not (Test-Path -LiteralPath $dll)) { return $false }
+    return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll)).Contains("HdAnimations")
+}
+
+# hd-art.json "creatures": { "files": [ { "file", "size", "sha256" } ] } -> the
+# files, their total size and an id for the set; $null when missing or not
+# what it should be.
+function Get-HdCreaturesInfo($manifest) {
+    if ($null -eq $manifest -or $null -eq $manifest.creatures) { return $null }
+    $files = @()
+    foreach ($f in @($manifest.creatures.files)) {
+        if ($null -eq $f) { continue }
+        $name = [string]$f.file
+        $sha = ([string]$f.sha256).ToLower()
+        $size = 0L
+        try { $size = [long]$f.size } catch { return $null }
+        if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.uoanim$' -or $sha -notmatch '^[0-9a-f]{64}$' -or $size -le 0) { return $null }
+        $files += , @{ File = $name; Url = $HdArtBaseUrl + $name; Size = $size; Sha256 = $sha }
+    }
+    if ($files.Count -eq 0) { return $null }
+    $total = 0L
+    foreach ($f in $files) { $total += $f.Size }
+    $joined = [Text.Encoding]::UTF8.GetBytes((($files | ForEach-Object { $_.Sha256 }) -join ","))
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    $id = (($hasher.ComputeHash($joined) | ForEach-Object { $_.ToString("x2") }) -join "")
+    $hasher.Dispose()
+    return @{ Files = $files; Size = $total; Id = $id }
+}
+
+# Each file into HDArt\anim: kept when it is already there and right, else
+# downloaded beside it as .part, checked, and moved in. Files the set no longer
+# names go once all of it is in. $onFile gets (index, count, info) before each
+# download. Throws on the first failure; what is in place stays.
+function Install-HdCreatures([string]$root, $info, [scriptblock]$onFile = $null) {
+    $p = Get-Paths $root
+    New-Item -ItemType Directory -Path $p.HdAnim -Force | Out-Null
+    for ($i = 0; $i -lt $info.Files.Count; $i++) {
+        $f = $info.Files[$i]
+        $dest = Join-Path $p.HdAnim $f.File
+        if ((Test-Path -LiteralPath $dest) -and (Get-Item -LiteralPath $dest).Length -eq $f.Size -and (Test-Sha256 $dest $f.Sha256)) { continue }
+        if ($onFile) { & $onFile ($i + 1) $info.Files.Count $f }
+        $part = "$dest.part"
+        Save-UrlWithTimeout $f.Url $part 30 60 14400
+        if (-not (Test-Sha256 $part $f.Sha256)) {
+            Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+            throw "$($f.File) does not match hd-art.json (SHA-256)"
+        }
+        Move-Item -LiteralPath $part -Destination $dest -Force
+    }
+    $keep = @($info.Files | ForEach-Object { $_.File })
+    Get-ChildItem -LiteralPath $p.HdAnim -File | Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
+    Write-HdArtStamp $p.HdAnimStamp $info.Id
+}
+
+function Invoke-HdCreatures([string]$root, $manifest) {
+    $p = Get-Paths $root
+    if (-not (Test-ClientDrawsHdCreatures $p.Client)) { return }   # the client update brings that first
+    $info = Get-HdCreaturesInfo $manifest
+    if ($null -eq $info) { return }   # no creatures in hd-art.json (yet)
+    if ((Read-HdArtStamp $p.HdAnimStamp) -eq $info.Id) { return }
+    if ((Test-Path -LiteralPath $p.HdAnimSkip) -and ((Get-Content -LiteralPath $p.HdAnimSkip -Raw).Trim() -eq $info.Id)) { return }
+
+    $gb = [math]::Round($info.Size / 1GB, 1)
+    $what = "HD creatures for UO Smallz are available"
+    if (Test-Path -LiteralPath $p.HdAnimStamp) { $what = "Updated HD creatures for UO Smallz are available" }
+    $a = Show-Message ("${what}: sharper monsters, animals, people and the clothes they wear, drawn at their normal size. " +
+        "It is a $gb GB download from the UO Smallz server, in $($info.Files.Count) parts; a part that breaks off is fetched again next time.`n`n" +
+        "Yes = download it now (the game starts afterwards)`nNo = not now (you are asked again next time)`n" +
+        "Cancel = don't ask again for this version") "YesNoCancel" "Question"
+    Write-LaunchLog $root "HD creatures $($info.Id.Substring(0, 12)) offered: $a"
+    if ($a -eq "Cancel") { Set-Content -LiteralPath $p.HdAnimSkip -Value $info.Id -Encoding ASCII; return }
+    if ($a -ne "Yes") { return }
+
+    while ((Get-ClientProcess $p.Client).Count -gt 0) {
+        $r = Show-Message "UO Smallz is still running. Close the game, then press Retry.`n`nCancel plays without the HD creatures." "RetryCancel" "Warning"
+        if ($r -ne "Retry") { Write-LaunchLog $root "HD creatures: client running, player cancelled"; return }
+    }
+
+    $busy = $null
+    try {
+        $busy = Show-Busy "Checking the HD creatures..."
+        $onFile = {
+            param($n, $count, $f)
+            if ($busy) {
+                $busy.Controls[0].Text = "Downloading the HD creatures, part $n of $count ($([math]::Round($f.Size / 1MB)) MB)..."
+                [System.Windows.Forms.Application]::DoEvents()
+            }
+        }
+        Install-HdCreatures $root $info $onFile
+        Write-LaunchLog $root "HD creatures installed ($($info.Id))"
+    } catch {
+        Write-LaunchLog $root "HD creatures failed, parts already in place kept: $($_.Exception.Message)"
+        try { Show-Message "The HD creatures could not all be downloaded; the parts that arrived are kept and the rest is fetched next time.`n`n$($_.Exception.Message)" "OK" "Warning" | Out-Null } catch { }
+    } finally {
+        if ($busy) { try { $busy.Close() } catch { } }
+    }
+}
+
 # After the client check: offer the pack when the client can draw it and
-# hd-art.json names one this install doesn't have. Silent on any failure.
+# hd-art.json names one this install doesn't have, then the creatures. Silent
+# on any failure.
 function Invoke-HdArt([string]$root) {
     $p = Get-Paths $root
     try {
         if (-not (Test-ClientDrawsHdArt $p.Client)) { return }   # the client update brings that first
         try {
-            $info = Get-HdArtInfo (Invoke-RestMethod -Uri $HdArtManifestUrl -Headers @{ "User-Agent" = "UOSmallz-launcher" } -TimeoutSec $TimeoutSec)
+            $manifest = Invoke-RestMethod -Uri $HdArtManifestUrl -Headers @{ "User-Agent" = "UOSmallz-launcher" } -TimeoutSec $TimeoutSec
         } catch {
             Write-LaunchLog $root "HD art check skipped: $($_.Exception.Message)"
             return
         }
+        Invoke-HdArtPack $root (Get-HdArtInfo $manifest)
+        try { Invoke-HdCreatures $root $manifest } catch { Write-LaunchLog $root "HD creatures error: $($_.Exception.Message)" }
+    } catch {
+        Write-LaunchLog $root "HD art error: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-HdArtPack([string]$root, $info) {
+    $p = Get-Paths $root
+    try {
         if ($null -eq $info) { Write-LaunchLog $root "HD art check: hd-art.json missing or not valid"; return }
         if ((Read-HdArtStamp $p.HdArtStamp) -eq $info.Sha256) { return }
         if ((Test-Path -LiteralPath $p.HdArtSkip) -and ((Get-Content -LiteralPath $p.HdArtSkip -Raw).Trim() -eq $info.Sha256)) { return }
@@ -769,6 +919,10 @@ function Invoke-Launcher([string]$root) {
             if ($busy) { $busy.Close(); $busy = $null }
             Install-ClientUpdate $root $zip $info.Sha256 $info.Tag
             Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256))"
+            try {
+                $l = Update-LauncherFiles $root
+                if ($l.Count -gt 0) { Write-LaunchLog $root "launcher updated: $($l -join ', ')" }
+            } catch { Write-LaunchLog $root "launcher not updated: $($_.Exception.Message)" }
         } catch {
             Write-LaunchLog $root "update $($info.Tag) failed, old client kept: $($_.Exception.Message)"
             try { Show-Message "The update could not be installed, so your current client was kept.`n`n$($_.Exception.Message)" "OK" "Warning" | Out-Null } catch { }
