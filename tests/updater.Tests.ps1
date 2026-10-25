@@ -429,16 +429,121 @@ Remove-Item $root -Recurse -Force
 
 # ---- launcher rides along with the client ----
 $root = New-Root
-Set-File (Join-Path $root "update-check.ps1") "old launcher"
+$oldL = "`$LauncherVersion = 6`r`n# old launcher"
+$newL = "`$LauncherVersion = 7`r`n# new launcher"
+Set-File (Join-Path $root "update-check.ps1") $oldL
 Set-File (Join-Path $root "launch.vbs") "same vbs"
-Set-File (Join-Path $root "Client\launcher\update-check.ps1") "new launcher"
+Set-File (Join-Path $root "Client\launcher\update-check.ps1") $newL
 Set-File (Join-Path $root "Client\launcher\launch.vbs") "same vbs"
 $l = Update-LauncherFiles $root
-Check ((Read-F (Join-Path $root "update-check.ps1")) -eq "new launcher" -and ($l -join ",") -eq "update-check.ps1") "launcher: a client update brings the new launcher, unchanged files left alone"
+Check ((Read-F (Join-Path $root "update-check.ps1")) -eq $newL -and ($l -join ",") -eq "update-check.ps1") "launcher: a client update brings the newer launcher, unchanged files left alone"
 Check (-not (Test-Path -LiteralPath (Join-Path $root "update-check.ps1.new"))) "launcher: no temp file left"
+Set-File (Join-Path $root "Client\launcher\update-check.ps1") $oldL
+Set-File (Join-Path $root "Client\launcher\launch.vbs") "older vbs"
+Check ((Update-LauncherFiles $root).Count -eq 0 -and (Read-F (Join-Path $root "update-check.ps1")) -eq $newL -and (Read-F (Join-Path $root "launch.vbs")) -eq "same vbs") "launcher: an older launcher in the client never replaces a newer one (it updated itself)"
 Remove-Item (Join-Path $root "Client\launcher") -Recurse -Force
-Check ((Update-LauncherFiles $root).Count -eq 0 -and (Read-F (Join-Path $root "update-check.ps1")) -eq "new launcher") "launcher: a client without launcher\ changes nothing"
+Check ((Update-LauncherFiles $root).Count -eq 0 -and (Read-F (Join-Path $root "update-check.ps1")) -eq $newL) "launcher: a client without launcher\ changes nothing"
 Remove-Item $root -Recurse -Force
+
+# ---- the launcher updates itself ----
+Check ((Get-LauncherVersionOf "# x`r`n`$LauncherVersion = 12`r`n") -eq 12 -and (Get-LauncherVersionOf "no version here") -eq 0) "self-update: reads `$LauncherVersion, 0 when there is none"
+Check ($LauncherVersion -ge 7) "self-update: this launcher has a version (7 or more)"
+$me = [IO.File]::ReadAllText((Join-Path $here "..\installer\update-check.ps1"))
+Check (Test-LauncherScript $me) "self-update: the real launcher passes the parse check"
+Check (-not (Test-LauncherScript ($me + "`r`n} }"))) "self-update: a launcher that does not parse is refused"
+Check (-not (Test-LauncherScript "`$LauncherVersion = 99`r`nWrite-Host hi")) "self-update: a script that is not the launcher is refused"
+
+# ---- updating only what changed ----
+# A release zip built the way the workflow builds it (Compress-Archive of the
+# client folder) and its file list, read through a file instead of GitHub.
+function New-FileList([string]$dir, [string]$tag) {
+    $full = (Resolve-Path $dir).Path
+    $files = Get-ChildItem -LiteralPath $full -Recurse -File | Sort-Object FullName | ForEach-Object {
+        [ordered]@{ path = $_.FullName.Substring($full.Length + 1).Replace('\', '/'); size = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower() }
+    }
+    return ([ordered]@{ tag = $tag; files = @($files) } | ConvertTo-Json -Depth 4)
+}
+function New-FileReader([string]$zip) {
+    return {
+        param([long]$from, [int]$count)
+        $fs = [IO.File]::OpenRead($zip)
+        try {
+            [void]$fs.Seek($from, [IO.SeekOrigin]::Begin)
+            $buf = New-Object byte[] $count
+            $got = 0
+            while ($got -lt $count) { $n = $fs.Read($buf, $got, $count - $got); if ($n -le 0) { throw "short read" }; $got += $n }
+        } finally { $fs.Dispose() }
+        return , $buf
+    }.GetNewClosure()
+}
+
+$root = New-Root
+New-FakeInstall $root
+$big = -join ((1..20000) | ForEach-Object { [char](65 + $_ % 26) })
+Set-File (Join-Path $root "Client\Big.dll") $big
+Set-File (Join-Path $root "Client\launcher\update-check.ps1") $oldL
+$rel = Join-Path $root "release"
+Set-File (Join-Path $rel "TazUO.exe") "old exe"
+Set-File (Join-Path $rel "TazUO.dll") "new dll"
+Set-File (Join-Path $rel "TazUO.deps.json") "old deps"
+Set-File (Join-Path $rel "Big.dll") $big
+Set-File (Join-Path $rel "LegionScripts\shipped.py") "new shipped"
+Set-File (Join-Path $rel "brand-new.dll") "added"
+Set-File (Join-Path $rel "launcher\update-check.ps1") $newL
+$zip = Join-Path $root "UOSmallz-Client-win-x64.zip"
+Compress-Archive -Path (Join-Path $rel "*") -DestinationPath $zip -Force
+$listText = New-FileList $rel "v7"
+$manifest = Read-ClientManifest $listText
+$changed = Get-ChangedFiles (Join-Path $root "Client") $manifest
+$names = @($changed | ForEach-Object { $_.Path } | Sort-Object)
+Check (($names -join ",") -eq "brand-new.dll,launcher/update-check.ps1,LegionScripts/shipped.py,TazUO.dll") "delta: only the changed and new files are fetched ($($names -join ', '))"
+$read = New-FileReader $zip
+$dir = Get-ZipDirectory (Get-Item $zip).Length $read
+Check ($dir.ContainsKey("TazUO.dll") -and $dir.ContainsKey("launcher/update-check.ps1") -and $dir["Big.dll"].Method -eq 8) "delta: the zip's directory reads, with '/' paths and deflated entries"
+[byte[]]$bigBytes = Read-ZipEntry $dir["Big.dll"] "Big.dll" $read
+Check ((Get-BytesSha256 $bigBytes) -eq (Get-Sha256 (Join-Path $rel "Big.dll"))) "delta: an entry inflates to the exact bytes"
+Write-Stamp (Join-Path $root "client-version.json") "v6" ("a" * 64)
+$fetched = Install-ClientDelta $root $manifest $changed (Get-Item $zip).Length $read (Get-Sha256 $zip) "v7"
+$c = Join-Path $root "Client"
+Check ((Read-F (Join-Path $c "TazUO.dll")) -eq "new dll" -and (Read-F (Join-Path $c "brand-new.dll")) -eq "added" -and (Read-F (Join-Path $c "LegionScripts\shipped.py")) -eq "new shipped") "delta: the changed and new files are in"
+Check ((Read-F (Join-Path $c "Big.dll")) -eq $big -and (Read-F (Join-Path $c "TazUO.exe")) -eq "old exe") "delta: unchanged files are the installed ones"
+Check ((Read-F (Join-Path $c "settings.json")) -match "192.168.1.222" -and (Read-F (Join-Path $c "Data\Profiles\acct\UO Smallz\Char\profile.json")) -eq "my profile" -and (Read-F (Join-Path $c "LegionScripts\mine.py")) -eq "my script") "delta: the player's settings, Data and own scripts carried"
+Check (-not (Test-Path -LiteralPath (Join-Path $c "old-only.dll"))) "delta: an old program file the release no longer has is not carried"
+$st = Read-Stamp (Join-Path $root "client-version.json")
+Check ($st.Tag -eq "v7" -and $st.Sha256 -eq (Get-Sha256 $zip) -and (Test-Path -LiteralPath (Join-Path $root "Client.old\TazUO.exe")) -and (Read-Pending (Join-Path $root "client-pending.json")).Tag -eq "v7") "delta: stamped with the release zip's SHA-256, Client.old kept, pending until a good launch"
+Check ($fetched -gt 0 -and $fetched -lt (Get-Item $zip).Length / 2) "delta: fetched only part of the zip ($fetched of $((Get-Item $zip).Length) bytes)"
+Remove-Item $root -Recurse -Force
+
+# A file in the zip that does not match its list: nothing changes.
+$root = New-Root
+New-FakeInstall $root
+$rel = Join-Path $root "release"
+Set-File (Join-Path $rel "TazUO.exe") "old exe"
+Set-File (Join-Path $rel "TazUO.dll") "new dll"
+$zip = Join-Path $root "c.zip"
+Compress-Archive -Path (Join-Path $rel "*") -DestinationPath $zip -Force
+$bad = (New-FileList $rel "v7") -replace (Get-Sha256 (Join-Path $rel "TazUO.dll")), ("b" * 64)
+$manifest = Read-ClientManifest $bad
+$changed = Get-ChangedFiles (Join-Path $root "Client") $manifest
+$threw = $false
+try { [void](Install-ClientDelta $root $manifest $changed (Get-Item $zip).Length (New-FileReader $zip) (Get-Sha256 $zip) "v7") } catch { $threw = $true }
+Check ($threw -and (Read-F (Join-Path $root "Client\TazUO.dll")) -eq "old dll" -and -not (Test-Path -LiteralPath (Join-Path $root "Client.new"))) "delta: a fetched file that does not match the list is refused; the old client stays, no Client.new"
+Remove-Item $root -Recurse -Force
+
+$threw = $false; try { [void](Read-ClientManifest '{"tag":"v7","files":[{"path":"../evil.dll","size":1,"sha256":"' + ("a" * 64) + '"}]}') } catch { $threw = $true }
+Check $threw "delta: a file list that climbs out of the client folder is refused"
+$threw = $false; try { [void](Read-ClientManifest '{"tag":"v7","files":[{"path":"C:/evil.dll","size":1,"sha256":"' + ("a" * 64) + '"}]}') } catch { $threw = $true }
+Check $threw "delta: a file list with a drive path is refused"
+$threw = $false; try { [void](Read-ClientManifest '{"tag":"v7","files":[{"path":"a.dll","size":1,"sha256":"' + ("a" * 64) + '"}]}') } catch { $threw = $true }
+Check $threw "delta: a file list without TazUO.exe is refused"
+
+$rel = [pscustomobject]@{ tag_name = "v7"; body = ""; name = "v7"; assets = @(
+    [pscustomobject]@{ name = "UOSmallz-Client-win-x64.zip"; browser_download_url = "https://x/zip"; digest = "sha256:" + ("c" * 64) },
+    [pscustomobject]@{ name = "UOSmallz-Client-win-x64.files.json"; browser_download_url = "https://x/list"; digest = "sha256:" + ("d" * 64) }) }
+$i = Get-UpdateInfo $rel $null
+Check ($i.ManifestUrl -eq "https://x/list" -and $i.ManifestSha256 -eq ("d" * 64)) "release: the file list and its SHA-256 are found"
+$i = Get-UpdateInfo $rel (("e" * 64) + "  UOSmallz-Client-win-x64.files.json")
+Check ($null -eq $i.ManifestUrl -and $i.Sha256 -eq ("c" * 64)) "release: a file list whose two SHA-256s disagree is not used (the full zip is)"
 
 # ---- HD creatures ----
 $m = [pscustomobject]@{ creatures = [pscustomobject]@{ files = @(

@@ -9,11 +9,16 @@
 #   - Up to date: say nothing, start the game.
 #   - Behind: one dialog (Update Now / Play Now / Skip This Version). Skip is
 #     remembered per version (client-skipped.txt), so it never nags twice.
-#   - Update: download the new client zip, check its SHA256 against the
-#     release (asset digest and/or SHA256SUMS.txt), unpack it beside the old
-#     one, carry settings.json, Data\ (profiles, macros, gumps) and any other
-#     file of the player's across, swap the folders, and roll back on any
-#     failure. The previous client stays as Client.old until the next update.
+#   - Update: fetch only the files that changed (the release's file list,
+#     checked against SHA256SUMS.txt, says which; they come out of the release
+#     zip by byte range), or else download the whole client zip and check its
+#     SHA256 against the release (asset digest and/or SHA256SUMS.txt). Either
+#     way the new client is built beside the old one, settings.json, Data\
+#     (profiles, macros, gumps) and any other file of the player's are carried
+#     across, the folders are swapped, and any failure rolls back. The
+#     previous client stays as Client.old until the next update.
+#   - The launcher updates itself: a higher $LauncherVersion on main replaces
+#     this script and launch.vbs, and runs in its place.
 #   - HD art: once the client can draw it, offer the pack (Yes / No / Cancel =
 #     don't ask again) from the UO Smallz server into HDArt beside Client,
 #     checked against hd-art.json; again only when hd-art.json names a new one.
@@ -55,6 +60,16 @@ $TimeoutSec = 6
 # download that does not match it is thrown away.
 $HdArtManifestUrl = "https://raw.githubusercontent.com/$Repo/main/hd-art.json"
 $HdArtBaseUrl     = "http://uosmallz.duckdns.org:2595/"   # allowlist: never read from a file
+
+# This launcher's version. It updates itself from this repo (Update-LauncherSelf)
+# when installer/update-check.ps1 on main carries a higher number, so bump it
+# with every change to this file or launch.vbs (the installer workflow refuses
+# a change that does not).
+$LauncherVersion = 7
+
+# Each release also lists every file of the client zip with its size and
+# SHA-256 (the build writes it); an update then fetches only what changed.
+$ManifestName = "UOSmallz-Client-win-x64.files.json"
 
 function Get-Paths([string]$root) {
     return @{
@@ -168,12 +183,30 @@ function Get-UpdateInfo($release, [string]$sumsText) {
     }
     $sha = $digestSha
     if (-not $sha) { $sha = $sumsSha }
+
+    # The file list, when the release has one, checked the same way. Without a
+    # SHA-256 for it (or with two that disagree) there is no changed-files update.
+    $manifestUrl = $null; $manifestSha = $null
+    $m = @($release.assets | Where-Object { $_.name -eq $ManifestName }) | Select-Object -First 1
+    if ($m) {
+        $mDigest = $null
+        if ($m.PSObject.Properties.Name -contains "digest" -and ([string]$m.digest) -match '^sha256:([0-9a-fA-F]{64})$') { $mDigest = $Matches[1].ToLower() }
+        $mSums = $null
+        if ($sumsText) { $mSums = Get-ShaFromSums $sumsText $ManifestName }
+        if (-not ($mDigest -and $mSums -and $mDigest -ne $mSums)) {
+            $manifestSha = $mDigest
+            if (-not $manifestSha) { $manifestSha = $mSums }
+            if ($manifestSha) { $manifestUrl = [string]$m.browser_download_url }
+        }
+    }
     return @{
         Tag    = [string]$release.tag_name
         Url    = [string]$asset.browser_download_url
         Sha256 = $sha
         Notes  = [string]$release.body
         Name   = [string]$release.name
+        ManifestUrl    = $manifestUrl
+        ManifestSha256 = $manifestSha
     }
 }
 
@@ -425,6 +458,21 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
             foreach ($c in Get-ChildItem -LiteralPath $inner -Force) { Move-Item -LiteralPath $c.FullName -Destination $p.New }
             Remove-Item -LiteralPath $inner -Recurse -Force
         }
+    } catch {
+        # a half-unpacked Client.new (disk full, antivirus) never stays behind
+        Remove-Item -LiteralPath $p.New -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    Complete-ClientUpdate $root $expectedSha $tag
+}
+
+# Client.new holds the new client's program files (unpacked from the zip, or
+# put together from the installed client and the changed files): the player's
+# files go in, it is marked ready, and it is swapped in. Throws on failure
+# after restoring the original Client folder.
+function Complete-ClientUpdate([string]$root, [string]$expectedSha, [string]$tag) {
+    $p = Get-Paths $root
+    try {
         if (-not (Test-Path -LiteralPath (Join-Path $p.New "TazUO.exe"))) {
             throw "the downloaded client has no TazUO.exe"
         }
@@ -478,14 +526,269 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
     }
 }
 
+# ---- updating only what changed -------------------------------------------
+# A release also publishes UOSmallz-Client-win-x64.files.json: every file of the
+# client zip with its size and SHA-256, itself checked against SHA256SUMS.txt.
+# The launcher hashes the installed client and fetches only the files that
+# differ, straight out of the release zip on GitHub by byte range: the zip's
+# central directory (at its end) says where each file is. A client update is
+# then a few MB instead of the whole zip (v4 -> v5 -> v6 changed 8 to 10 of 764
+# files, about 9 MB of 90). Every fetched file is checked against the list.
+# Anything unexpected (no list, no byte ranges, zip64, a mismatch) throws, and
+# the launcher downloads the full zip as before.
+
+$DeltaMaxShare = 0.6   # more than this share of the client changed: the full zip
+
+# The file list's JSON -> @{ Tag; Files = @(@{ Path; Size; Sha256 }) }. Paths are
+# relative, with "/", and may not climb out of the client folder.
+function Read-ClientManifest([string]$text) {
+    $j = $text | ConvertFrom-Json
+    $files = @()
+    foreach ($f in @($j.files)) {
+        $path = ([string]$f.path).Replace('\', '/')
+        $sha = ([string]$f.sha256).ToLower()
+        if ($path -eq "" -or $path.StartsWith("/") -or $path -match '(^|/)\.\.(/|$)' -or $path.Contains(":") -or $sha -notmatch '^[0-9a-f]{64}$') {
+            throw "the file list has a bad entry ($path)"
+        }
+        $files += , @{ Path = $path; Size = [long]$f.size; Sha256 = $sha }
+    }
+    if ($files.Count -eq 0) { throw "the file list is empty" }
+    if (-not ($files | Where-Object { $_.Path -eq "TazUO.exe" })) { throw "the file list has no TazUO.exe" }
+    return @{ Tag = [string]$j.tag; Files = $files }
+}
+
+function Get-LocalPath([string]$dir, [string]$rel) { return Join-Path $dir ($rel.Replace('/', '\')) }
+
+# The files whose installed copy is missing or different.
+function Get-ChangedFiles([string]$clientDir, $manifest) {
+    $changed = @()
+    foreach ($f in $manifest.Files) {
+        $local = Get-LocalPath $clientDir $f.Path
+        if ((Test-Path -LiteralPath $local -PathType Leaf) -and (Get-Item -LiteralPath $local).Length -eq $f.Size -and (Test-Sha256 $local $f.Sha256)) { continue }
+        $changed += , $f
+    }
+    return , $changed
+}
+
+# Byte ranges of a release asset. GitHub answers the download address with a
+# redirect to a signed address that serves ranges (206); it is followed once.
+# Returns @{ Total; Read } where Read is { param([long]$from, [int]$count) }
+# returning exactly that many bytes.
+function New-RangeReader([string]$url) {
+    $req = [Net.HttpWebRequest]::Create($url)
+    $req.UserAgent = "UOSmallz-launcher"
+    $req.AllowAutoRedirect = $true
+    $req.Timeout = 30000
+    $req.ReadWriteTimeout = 30000
+    $req.AddRange([long]0, [long]0)
+    $resp = $req.GetResponse()
+    try {
+        if ([int]$resp.StatusCode -ne 206) { throw "the download server does not answer byte ranges" }
+        if ([string]$resp.Headers["Content-Range"] -notmatch '/(\d+)\s*$') { throw "the download server sent no size" }
+        $total = [long]$Matches[1]
+        $final = $resp.ResponseUri.AbsoluteUri
+    } finally { $resp.Dispose() }
+    $read = {
+        param([long]$from, [int]$count)
+        $r = [Net.HttpWebRequest]::Create($final)
+        $r.UserAgent = "UOSmallz-launcher"
+        $r.Timeout = 30000
+        $r.ReadWriteTimeout = 30000
+        $r.AddRange($from, $from + $count - 1)
+        $resp = $r.GetResponse()
+        try {
+            if ([int]$resp.StatusCode -ne 206) { throw "the download server did not answer a byte range" }
+            $s = $resp.GetResponseStream()
+            $buf = New-Object byte[] $count
+            $got = 0
+            while ($got -lt $count) {
+                $n = $s.Read($buf, $got, $count - $got)
+                if ($n -le 0) { throw "the download stopped early" }
+                $got += $n
+            }
+        } finally { $resp.Dispose() }
+        return , $buf
+    }.GetNewClosure()
+    return @{ Total = $total; Read = $read }
+}
+
+# The zip's central directory: entry name ("/" separators) -> @{ Method; Comp;
+# Size; Offset }.
+function Get-ZipDirectory([long]$total, [scriptblock]$read) {
+    $tailLen = [int][Math]::Min($total, 65557L)
+    [byte[]]$tail = & $read ($total - $tailLen) $tailLen
+    $eocd = -1
+    for ($i = $tail.Length - 22; $i -ge 0; $i--) {
+        if ([BitConverter]::ToUInt32($tail, $i) -eq 0x06054b50) { $eocd = $i; break }
+    }
+    if ($eocd -lt 0) { throw "the zip has no end of central directory" }
+    $count = [BitConverter]::ToUInt16($tail, $eocd + 10)
+    $cdSize = [BitConverter]::ToUInt32($tail, $eocd + 12)
+    $cdOff = [BitConverter]::ToUInt32($tail, $eocd + 16)
+    if ($count -eq 0xFFFF -or $cdSize -eq 0xFFFFFFFF -or $cdOff -eq 0xFFFFFFFF) { throw "zip64 is not read here" }
+    [byte[]]$cd = & $read ([long]$cdOff) ([int]$cdSize)
+    $entries = @{}
+    $o = 0
+    for ($n = 0; $n -lt $count; $n++) {
+        if ([BitConverter]::ToUInt32($cd, $o) -ne 0x02014b50) { throw "the zip's directory is damaged" }
+        $nl = [BitConverter]::ToUInt16($cd, $o + 28)
+        $name = [Text.Encoding]::UTF8.GetString($cd, $o + 46, $nl).Replace('\', '/')
+        $entries[$name] = @{
+            Method = [int][BitConverter]::ToUInt16($cd, $o + 10)
+            Comp   = [long][BitConverter]::ToUInt32($cd, $o + 20)
+            Size   = [long][BitConverter]::ToUInt32($cd, $o + 24)
+            Offset = [long][BitConverter]::ToUInt32($cd, $o + 42)
+        }
+        $o += 46 + $nl + [BitConverter]::ToUInt16($cd, $o + 30) + [BitConverter]::ToUInt16($cd, $o + 32)
+    }
+    return $entries
+}
+
+# One file's bytes out of the zip (stored or deflated).
+function Read-ZipEntry($entry, [string]$name, [scriptblock]$read) {
+    if ($entry.Method -ne 0 -and $entry.Method -ne 8) { throw "$name is packed in a way this launcher does not read ($($entry.Method))" }
+    [byte[]]$head = & $read $entry.Offset 30
+    if ([BitConverter]::ToUInt32($head, 0) -ne 0x04034b50) { throw "the zip's header for $name is damaged" }
+    $skip = 30 + [BitConverter]::ToUInt16($head, 26) + [BitConverter]::ToUInt16($head, 28)
+    [byte[]]$data = New-Object byte[] 0
+    if ($entry.Comp -gt 0) { $data = & $read ($entry.Offset + $skip) ([int]$entry.Comp) }
+    if ($entry.Method -eq 0) { return , $data }
+    $in = New-Object IO.MemoryStream (, $data)
+    $z = New-Object IO.Compression.DeflateStream ($in, [IO.Compression.CompressionMode]::Decompress)
+    $out = New-Object IO.MemoryStream
+    try { $z.CopyTo($out) } finally { $z.Dispose() }
+    return , $out.ToArray()
+}
+
+function Get-BytesSha256([byte[]]$bytes) {
+    $h = [Security.Cryptography.SHA256]::Create()
+    try { return (($h.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") }) -join "") } finally { $h.Dispose() }
+}
+
+# Client.new from the installed client's unchanged files and the changed ones
+# out of the zip, then the usual swap (Complete-ClientUpdate). Returns the bytes
+# fetched. Throws, leaving no Client.new, on anything unexpected.
+function Install-ClientDelta([string]$root, $manifest, $changed, [long]$total, [scriptblock]$read, [string]$zipSha, [string]$tag) {
+    $p = Get-Paths $root
+    if (Test-Path -LiteralPath $p.New) { Remove-Item -LiteralPath $p.New -Recurse -Force }
+    $fetched = 0L
+    try {
+        $dir = Get-ZipDirectory $total $read
+        $want = @{}
+        foreach ($f in $changed) { $want[$f.Path] = $true }
+        foreach ($f in $manifest.Files) {
+            $dest = Get-LocalPath $p.New $f.Path
+            $d = Split-Path -Parent $dest
+            if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+            if ($want.ContainsKey($f.Path)) {
+                $e = $dir[$f.Path]
+                if ($null -eq $e) { throw "$($f.Path) is not in the release zip" }
+                [byte[]]$bytes = Read-ZipEntry $e $f.Path $read
+                $fetched += $e.Comp
+                if ($bytes.Length -ne $f.Size -or (Get-BytesSha256 $bytes) -ne $f.Sha256) { throw "$($f.Path) from the zip does not match the file list" }
+                [IO.File]::WriteAllBytes($dest, $bytes)
+            } else {
+                Copy-Item -LiteralPath (Get-LocalPath $p.Client $f.Path) -Destination $dest -Force
+            }
+        }
+    } catch {
+        Remove-Item -LiteralPath $p.New -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    Complete-ClientUpdate $root $zipSha $tag
+    return $fetched
+}
+
+# The release's file list (checked against its SHA-256), what changed, and
+# the update from those files only. Returns the bytes fetched; throws when the
+# full download should be used instead.
+function Invoke-ClientDelta([string]$root, $info) {
+    $p = Get-Paths $root
+    if (-not $info.ManifestUrl -or -not $info.ManifestSha256) { throw "the release has no checked file list" }
+    if (-not (Test-Path -LiteralPath $p.Exe)) { throw "no installed client to update from" }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("uosmallz-files-" + [Guid]::NewGuid().ToString("N") + ".json")
+    try {
+        Save-UrlWithTimeout $info.ManifestUrl $tmp 30 30 120
+        if (-not (Test-Sha256 $tmp $info.ManifestSha256)) { throw "the file list does not match its SHA-256" }
+        $manifest = Read-ClientManifest ([IO.File]::ReadAllText($tmp))
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
+    if ($manifest.Tag -and $manifest.Tag -ne $info.Tag) { throw "the file list is for $($manifest.Tag), not $($info.Tag)" }
+    $changed = Get-ChangedFiles $p.Client $manifest
+    $all = 0L; $chg = 0L
+    foreach ($f in $manifest.Files) { $all += $f.Size }
+    foreach ($f in $changed) { $chg += $f.Size }
+    if ($all -gt 0 -and $chg / $all -gt $DeltaMaxShare) { throw "most of the client changed" }
+    $reader = New-RangeReader $info.Url
+    return Install-ClientDelta $root $manifest $changed $reader.Total $reader.Read $info.Sha256 $info.Tag
+}
+
+# ---- the launcher updates itself -------------------------------------------
+# At each start: when installer/update-check.ps1 on main carries a higher
+# $LauncherVersion than this one, it and launch.vbs (from that same commit, so
+# they belong together) replace the installed ones, after the new script is
+# checked to parse. Launcher fixes then reach every player without a client
+# release or a new installer. Same source and trust as the installer itself:
+# this public repo, over HTTPS.
+
+function Get-LauncherVersionOf([string]$text) {
+    if ($text -match '(?m)^\$LauncherVersion\s*=\s*(\d+)') { return [int]$Matches[1] }
+    return 0
+}
+
+function Test-LauncherScript([string]$text) {
+    $errors = $null
+    [void][Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$errors)
+    return ($null -eq $errors -or $errors.Count -eq 0) -and $text.Contains("function Invoke-Launcher")
+}
+
+# Returns $true when the launcher files were replaced (the caller starts the
+# new one). Silent on any failure: the installed launcher goes on.
+function Update-LauncherSelf([string]$root) {
+    $h = Get-WebHeaders
+    $h["Accept"] = "application/vnd.github.sha"
+    # Windows PowerShell hands this media type back as bytes, not text.
+    $body = (Invoke-WebRequest -Uri "https://api.github.com/repos/$Repo/commits/main" -Headers $h -TimeoutSec $TimeoutSec -UseBasicParsing).Content
+    if ($body -is [byte[]]) { $body = [Text.Encoding]::ASCII.GetString($body) }
+    $commit = ([string]$body).Trim()
+    if ($commit -notmatch '^[0-9a-f]{40}$') { throw "unexpected answer for the latest commit" }
+    $base = "https://raw.githubusercontent.com/$Repo/$commit/installer/"
+    $tmpPs1 = Join-Path $root "update-check.ps1.download"
+    $tmpVbs = Join-Path $root "launch.vbs.download"
+    try {
+        Save-UrlWithTimeout ($base + "update-check.ps1") $tmpPs1 15 15 60
+        $text = [IO.File]::ReadAllText($tmpPs1)
+        $v = Get-LauncherVersionOf $text
+        if ($v -le $LauncherVersion) { return $false }
+        if (-not (Test-LauncherScript $text)) { throw "launcher $v on main does not parse; not installed" }
+        Save-UrlWithTimeout ($base + "launch.vbs") $tmpVbs 15 15 60
+        if (-not ([IO.File]::ReadAllText($tmpVbs)).Contains("update-check.ps1")) { throw "launch.vbs on main is not the launcher; not installed" }
+        Move-Item -LiteralPath $tmpVbs -Destination (Join-Path $root "launch.vbs") -Force
+        Move-Item -LiteralPath $tmpPs1 -Destination (Join-Path $root "update-check.ps1") -Force
+        Write-LaunchLog $root "launcher updated itself: $LauncherVersion -> $v (commit $($commit.Substring(0, 7)))"
+        return $true
+    } finally {
+        Remove-Item -LiteralPath $tmpPs1, $tmpVbs -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # The client zip (checked against the release's SHA-256) carries this launcher
 # in launcher\: after an update, the launcher files in the install folder are
-# replaced by those, so launcher changes reach players with the client. This
+# replaced by those when they are newer, so a client release brings launcher
+# changes to an install that has not updated itself. Never an older or equal
+# one: the launcher may already have updated itself past that release. This
 # run goes on with the code it already loaded; the next start uses the new one.
 function Update-LauncherFiles([string]$root) {
     $p = Get-Paths $root
     $src = Join-Path $p.Client "launcher"
     $changed = @()
+    $zipPs1 = Join-Path $src "update-check.ps1"
+    $havePs1 = Join-Path $root "update-check.ps1"
+    if ((Test-Path -LiteralPath $zipPs1) -and (Test-Path -LiteralPath $havePs1) -and
+        (Get-LauncherVersionOf ([IO.File]::ReadAllText($zipPs1))) -le (Get-LauncherVersionOf ([IO.File]::ReadAllText($havePs1)))) {
+        return $changed
+    }
     foreach ($f in @("update-check.ps1", "launch.vbs")) {
         $from = Join-Path $src $f
         $to = Join-Path $root $f
@@ -914,11 +1217,28 @@ function Invoke-Launcher([string]$root) {
         $zip = Join-Path $tmp $AssetName
         $busy = $null
         try {
-            $busy = Show-Busy "Downloading UO Smallz client $($info.Tag)..."
-            Save-UrlWithTimeout $info.Url $zip
-            if ($busy) { $busy.Close(); $busy = $null }
-            Install-ClientUpdate $root $zip $info.Sha256 $info.Tag
-            Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256))"
+            # Only the files that changed when the release lists its files;
+            # the full zip when that is not possible.
+            $done = $false
+            if ($info.ManifestUrl) {
+                try {
+                    $busy = Show-Busy "Updating UO Smallz client to $($info.Tag) (only the files that changed)..."
+                    $fetched = Invoke-ClientDelta $root $info
+                    $done = $true
+                    Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256)) by fetching the changed files only: $([math]::Round($fetched / 1MB, 1)) MB"
+                } catch {
+                    Write-LaunchLog $root "update $($info.Tag): changed-files update not used, downloading the full client ($($_.Exception.Message))"
+                } finally {
+                    if ($busy) { try { $busy.Close() } catch { }; $busy = $null }
+                }
+            }
+            if (-not $done) {
+                $busy = Show-Busy "Downloading UO Smallz client $($info.Tag)..."
+                Save-UrlWithTimeout $info.Url $zip
+                if ($busy) { $busy.Close(); $busy = $null }
+                Install-ClientUpdate $root $zip $info.Sha256 $info.Tag
+                Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256))"
+            }
             try {
                 $l = Update-LauncherFiles $root
                 if ($l.Count -gt 0) { Write-LaunchLog $root "launcher updated: $($l -join ', ')" }
@@ -965,6 +1285,16 @@ function Watch-PendingLaunch([string]$root, $proc) {
 if (-not $NoMain) {
     try { [void](Repair-ClientFolder $InstallRoot) } catch { Write-LaunchLog $InstallRoot "recovery failed: $($_.Exception.Message)" }
     try { [void](Confirm-PendingUpdate $InstallRoot) } catch { Write-LaunchLog $InstallRoot "cleanup failed: $($_.Exception.Message)" }
+    # A newer launcher on main replaces this one and runs in its place.
+    try {
+        if (Update-LauncherSelf $InstallRoot) {
+            $ps = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+            Start-Process -FilePath $ps -WindowStyle Hidden -ArgumentList @(
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+                "-File", "`"$(Join-Path $InstallRoot 'update-check.ps1')`"")
+            return
+        }
+    } catch { Write-LaunchLog $InstallRoot "launcher self-update skipped: $($_.Exception.Message)" }
     try { Invoke-Launcher $InstallRoot } catch { }
     try { Invoke-HdArt $InstallRoot } catch { }
     $proc = Start-Client $InstallRoot

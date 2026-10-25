@@ -1,0 +1,96 @@
+# Keeps the installer new players download current, and launcher changes
+# reaching players.
+#
+#   launcher-version  a push that changes installer/update-check.ps1 or
+#                     launch.vbs must raise $LauncherVersion: installed
+#                     launchers update themselves only to a higher number
+#                     (update-check.ps1, Update-LauncherSelf).
+#   installer         rebuilds UOSmallz-Installer-win.zip (installer/ +
+#                     notices/ + README, as build-client.yml packs it) and
+#                     replaces it, and its line in SHA256SUMS.txt, on the
+#                     latest release. The client zips and their file lists
+#                     are not touched, so no player is offered an update.
+#
+# A push that also ships a new client runs build-client.yml, which packs its
+# own installer; the shared concurrency group keeps the two from overlapping.
+name: Refresh the installer
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "installer/**"
+      - "notices/**"
+      - "README.md"
+      - ".github/workflows/installer.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-client
+  cancel-in-progress: false
+
+jobs:
+  launcher-version:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: A launcher change raises $LauncherVersion
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          ver() { grep -oP '^\$LauncherVersion\s*=\s*\K\d+' || echo 0; }
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "No earlier commit to compare with."; exit 0
+          fi
+          if git diff --quiet "$BEFORE" HEAD -- installer/update-check.ps1 installer/launch.vbs; then
+            echo "Launcher unchanged."; exit 0
+          fi
+          old=$(git show "$BEFORE:installer/update-check.ps1" | ver)
+          new=$(ver < installer/update-check.ps1)
+          if [ "$new" -le "$old" ]; then
+            echo "::error::installer/update-check.ps1 or launch.vbs changed but \$LauncherVersion did not go up ($old -> $new). Installed launchers would never pick the change up."
+            exit 1
+          fi
+          echo "Launcher $old -> $new."
+
+  installer:
+    needs: launcher-version
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: smallz
+
+      - name: Installer package
+        shell: bash
+        run: |
+          mkdir -p pkg/UOSmallz-Installer out
+          cp -r smallz/installer/. pkg/UOSmallz-Installer/
+          cp -r smallz/notices pkg/UOSmallz-Installer/notices
+          cat smallz/patches/client/*.patch > pkg/UOSmallz-Installer/notices/uosmallz-tazuo-changes.patch
+          cp smallz/README.md pkg/UOSmallz-Installer/README.txt
+          (cd pkg && zip -qr ../out/UOSmallz-Installer-win.zip UOSmallz-Installer)
+
+      - name: Replace it on the latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          mkdir -p sums
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -D sums
+          sha=$(sha256sum out/UOSmallz-Installer-win.zip | cut -d' ' -f1)
+          grep -v ' \*\?UOSmallz-Installer-win\.zip$' sums/SHA256SUMS.txt > out/SHA256SUMS.txt || true
+          echo "$sha  UOSmallz-Installer-win.zip" >> out/SHA256SUMS.txt
+          cat out/SHA256SUMS.txt
+          gh release upload "$tag" out/UOSmallz-Installer-win.zip out/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Installer on $tag replaced ($sha)."

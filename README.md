@@ -19,6 +19,10 @@ UPDATES (Windows)
   is out you get Update Now / Play Now / Skip This Version. Updating keeps
   your settings.json and everything in Client\Data (characters' profiles,
   macros, window layout); the previous client stays in Client.old.
+  Since v7 an update downloads only the files that changed (usually about
+  10 MB instead of the whole 90 MB client), each one checked; if that is not
+  possible it downloads the whole client as before. The launcher also keeps
+  itself up to date, so you never need a new installer after installing.
   Running install.bat again is also safe: it keeps your settings.json.
 
 HD ART

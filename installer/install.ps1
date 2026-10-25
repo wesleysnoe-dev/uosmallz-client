@@ -510,11 +510,20 @@ try {
   if ($set.Count -eq 0) { Ok "Kept your settings.json as it is ($settings)" }
   else { Ok "settings.json: set $($set -join ', ') ($settings)" }
 
-  # 3b. Version stamp and launcher (update check at every start)
-  foreach ($f in @("update-check.ps1", "launch.vbs")) {
-    Copy-Item -LiteralPath (Join-Path $ScriptDir $f) -Destination (Join-Path $InstallRoot $f) -Force
+  # 3b. Version stamp and launcher (update check at every start). A launcher
+  # that has already updated itself past this installer's is kept.
+  $haveLauncher = Join-Path $InstallRoot "update-check.ps1"
+  $mineVer = Get-LauncherVersionOf ([IO.File]::ReadAllText((Join-Path $ScriptDir "update-check.ps1")))
+  $haveVer = 0
+  if (Test-Path -LiteralPath $haveLauncher) { $haveVer = Get-LauncherVersionOf ([IO.File]::ReadAllText($haveLauncher)) }
+  if ($haveVer -gt $mineVer) {
+    Ok "Launcher kept (yours is newer: $haveVer; client $clientTag)"
+  } else {
+    foreach ($f in @("update-check.ps1", "launch.vbs")) {
+      Copy-Item -LiteralPath (Join-Path $ScriptDir $f) -Destination (Join-Path $InstallRoot $f) -Force
+    }
+    Ok "Launcher installed (version $mineVer, client $clientTag)"
   }
-  Ok "Launcher installed (client $clientTag)"
 
   # 4. Shortcut
   Step "Shortcuts"

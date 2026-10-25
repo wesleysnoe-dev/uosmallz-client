@@ -8,7 +8,10 @@
 # The release tag is "v" + CLIENT_VERSION (v2, v3, ...). It is marked latest,
 # which is what the launcher (update-check.ps1) and install.ps1 read:
 #   UOSmallz-Client-win-x64.zip, UOSmallz-Client-linux-x64.zip,
-#   UOSmallz-Installer-win.zip (installer/ + notices/ + README), SHA256SUMS.txt
+#   UOSmallz-Client-win-x64.files.json, UOSmallz-Client-linux-x64.files.json
+#     (every file of the zip with size and SHA-256: the launcher fetches only
+#     the changed ones), UOSmallz-Installer-win.zip (installer/ + notices/ +
+#     README; refreshed by installer.yml when only those change), SHA256SUMS.txt
 #
 # To ship a new client: change patches/client and bump CLIENT_VERSION in the
 # same push to main (or run it from the Actions tab). A tag that already
@@ -129,6 +132,24 @@ jobs:
           mkdir -p cuo/dist/launcher
           cp smallz/installer/update-check.ps1 smallz/installer/launch.vbs cuo/dist/launcher/
 
+      # Every file of the zip with its size and SHA-256: the launcher compares it
+      # with the installed client and fetches only what changed (update-check.ps1,
+      # Invoke-ClientDelta). Paths relative, with "/".
+      - name: File list
+        shell: pwsh
+        run: |
+          $root = (Resolve-Path cuo/dist).Path
+          $files = Get-ChildItem -LiteralPath $root -Recurse -File | Sort-Object FullName | ForEach-Object {
+            [ordered]@{
+              path   = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
+              size   = $_.Length
+              sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower()
+            }
+          }
+          $list = [ordered]@{ tag = "${{ needs.version.outputs.tag }}"; files = @($files) }
+          $list | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "UOSmallz-Client-${{ matrix.target }}.files.json" -Encoding utf8NoBOM
+          "$(@($files).Count) files listed"
+
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path cuo/dist/* -DestinationPath "UOSmallz-Client-${{ matrix.target }}.zip" -Force
@@ -136,7 +157,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: client-${{ matrix.target }}
-          path: UOSmallz-Client-${{ matrix.target }}.zip
+          path: |
+            UOSmallz-Client-${{ matrix.target }}.zip
+            UOSmallz-Client-${{ matrix.target }}.files.json
           retention-days: 3
 
   release:
@@ -165,7 +188,8 @@ jobs:
           cp smallz/README.md pkg/UOSmallz-Installer/README.txt
           (cd pkg && zip -qr ../out/UOSmallz-Installer-win.zip UOSmallz-Installer)
           cd out
-          sha256sum UOSmallz-Client-win-x64.zip UOSmallz-Client-linux-x64.zip UOSmallz-Installer-win.zip > SHA256SUMS.txt
+          sha256sum UOSmallz-Client-win-x64.zip UOSmallz-Client-linux-x64.zip UOSmallz-Installer-win.zip \
+            UOSmallz-Client-win-x64.files.json UOSmallz-Client-linux-x64.files.json > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish ${{ needs.version.outputs.tag }} (latest)
@@ -178,7 +202,7 @@ jobs:
             UO Smallz player client ${{ needs.version.outputs.tag }}: TazUO ${{ needs.version.outputs.tazuo }} with the UO Smallz patches (patches/client; full patch in notices/).
 
             Already installed? Start UO Smallz from its shortcut and choose Update Now. New player: download UOSmallz-Installer-win.zip, unzip, run install.bat.
-          artifacts: "out/UOSmallz-Client-win-x64.zip,out/UOSmallz-Client-linux-x64.zip,out/UOSmallz-Installer-win.zip,out/SHA256SUMS.txt"
+          artifacts: "out/UOSmallz-Client-win-x64.zip,out/UOSmallz-Client-linux-x64.zip,out/UOSmallz-Installer-win.zip,out/UOSmallz-Client-win-x64.files.json,out/UOSmallz-Client-linux-x64.files.json,out/SHA256SUMS.txt"
           allowUpdates: false
           makeLatest: "true"
           prerelease: false
