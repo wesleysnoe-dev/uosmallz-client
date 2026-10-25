@@ -4,7 +4,14 @@
 # one RAR5 extractor for the game data: unar, unrar or 7zz (p7zip cannot read RAR5).
 set -euo pipefail
 HOST=uosmallz.duckdns.org; PORT=2593; VER=7.0.23.1
-CLIENT_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/download/v1/UOSmallz-Client-linux-x64.zip
+# The latest client, checked against its release's SHA256SUMS.txt (as install.ps1 does on Windows).
+CLIENT_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/download/UOSmallz-Client-linux-x64.zip
+SUMS_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/download/SHA256SUMS.txt
+# HD art (tools/hd-art in uo-offline-dev): ~0.5 GB from the UO Smallz server itself into $ROOT/HDArt
+# (the client reads it from beside its folder), checked against hd-art.json in this repo. Fetched
+# again only when hd-art.json names a new pack. INSTALL_HD_ART=0 to skip.
+HD_ART_MANIFEST=https://raw.githubusercontent.com/wesleysnoe-dev/uosmallz-client/main/hd-art.json
+HD_ART_BASE=http://uosmallz.duckdns.org:2595/
 # Same mirror, file and hash as the UO Offline installer.
 DATA_URL=https://mirror.ashkantra.de/fullclients/7.0.23.1.exe
 DATA_SHA=23b0548252bb4e6f39afbddac2e64f8deb862fbfaccb1303b87895d295e01839
@@ -24,7 +31,14 @@ for c in curl unzip sha256sum python3; do command -v $c >/dev/null || die "Pleas
 mkdir -p "$ROOT/Client" "$ROOT/UOData"
 banner "Game client (TazUO)"
 here="$(cd "$(dirname "$0")" && pwd)"; zip="$here/UOSmallz-Client-linux-x64.zip"
-[ -f "$zip" ] || { zip="$ROOT/client.zip"; say "Downloading client..."; curl -fL -A "$UA" -o "$zip" "$CLIENT_URL"; }
+if [ ! -f "$zip" ]; then
+  zip="$ROOT/UOSmallz-Client-linux-x64.zip"; say "Downloading the latest client..."
+  curl -fL -A "$UA" -o "$zip" "$CLIENT_URL"
+  curl -fsSL -A "$UA" -o "$ROOT/SHA256SUMS.txt" "$SUMS_URL"
+  (cd "$ROOT" && grep ' UOSmallz-Client-linux-x64.zip$' SHA256SUMS.txt | sha256sum -c --quiet -) \
+    || { rm -f "$zip" "$ROOT/SHA256SUMS.txt"; die "SHA256 mismatch for the client download; file deleted."; }
+  rm -f "$ROOT/SHA256SUMS.txt"
+fi
 unzip -qo "$zip" -d "$ROOT/Client"; chmod +x "$ROOT/Client/TazUO" 2>/dev/null || true
 ok "Client: $ROOT/Client/TazUO"
 
@@ -186,6 +200,36 @@ cat > "$ROOT/Client/settings.json" <<JSON
 }
 JSON
 ok "Wrote $ROOT/Client/settings.json"
+
+# HD art: only for a client that draws it at the art's own size (patches/client/0003); an older one
+# would draw every item twice as big. Every problem is a warning: the game runs without it.
+install_hd_art() {
+  banner "HD art"
+  [[ "${INSTALL_HD_ART:-1}" == "1" ]] || { say "Skipped (INSTALL_HD_ART=0)."; return 0; }
+  grep -aq ScaledTexture2D "$ROOT/Client/ClassicUO.Renderer.dll" 2>/dev/null || { warn "This client can't draw HD art yet; skipped."; return 0; }
+  local m info file size sha have="" zip="$ROOT/hdart.zip"
+  m="$(curl -fsSL -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD art skipped."; return 0; }
+  info="$(printf '%s' "$m" | python3 -c 'import json,sys; j=json.load(sys.stdin); print(j["file"], int(j["size"]), str(j["sha256"]).lower())' 2>/dev/null)" || info=""
+  read -r file size sha <<< "${info:-x 0 x}"
+  if [[ ! "$file" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$ || ! "$sha" =~ ^[0-9a-f]{64}$ || "$size" -le 0 ]]; then
+    warn "hd-art.json is not valid; HD art skipped."; return 0
+  fi
+  [[ -f "$ROOT/hdart-version.json" ]] && have="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$ROOT/hdart-version.json" 2>/dev/null || true)"
+  [[ "$have" == "$sha" ]] && { ok "HD art up to date."; return 0; }
+  say "Downloading the HD art ($(( size / 1048576 )) MB from the UO Smallz server)..."
+  # -C -: an earlier run that broke off carries on where it stopped
+  curl -fL -C - --progress-bar -A "$UA" -o "$zip" "${HD_ART_BASE}${file}" || { warn "HD art download failed; run install.sh again to carry on."; return 0; }
+  echo "$sha  $zip" | sha256sum -c --quiet - || { rm -f "$zip"; warn "The HD art download didn't match hd-art.json; deleted."; return 0; }
+  rm -rf "$ROOT/HDArt.new" "$ROOT/HDArt.old"
+  unzip -q "$zip" -d "$ROOT/HDArt.new" && [[ -d "$ROOT/HDArt.new/art" ]] || { rm -rf "$ROOT/HDArt.new"; warn "Could not unpack the HD art; the art you had stays."; return 0; }
+  [[ -d "$ROOT/HDArt" ]] && mv "$ROOT/HDArt" "$ROOT/HDArt.old"
+  mv "$ROOT/HDArt.new" "$ROOT/HDArt"
+  rm -rf "$ROOT/HDArt.old" "$zip"
+  printf '{ "sha256": "%s" }\n' "$sha" > "$ROOT/hdart-version.json"
+  ok "HD art: $ROOT/HDArt"
+}
+install_hd_art
+
 mkdir -p "$HOME/.local/share/applications"
 cat > "$HOME/.local/share/applications/uosmallz.desktop" <<D
 [Desktop Entry]

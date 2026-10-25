@@ -19,10 +19,26 @@ UPDATES (Windows)
   macros, window layout); the previous client stays in Client.old.
   Running install.bat again is also safe: it keeps your settings.json.
 
+HD ART
+  Since client v4 the game can draw HD art: every item, gump and land tile
+  at twice the detail, drawn at the normal size (the difference shows most
+  when you zoom in). Creatures and animations are unchanged.
+  The launcher offers it once the v4 client is installed: a ~530 MB
+  download from the UO Smallz server (uosmallz.duckdns.org port 2595), checked
+  against hd-art.json in this repo, into an HDArt folder beside Client. Yes
+  downloads it now, No asks again next time, Cancel never asks for that pack
+  again. Client updates don't touch it. To go back to the original art,
+  delete the HDArt folder.
+  Installed before v4? The client update arrives as usual, but the HD art
+  offer comes from the new launcher: download the new UOSmallz-Installer-win.zip
+  and run install.bat once (it keeps your settings).
+
 LINUX
   Run install.sh from the installer zip. Needs curl, unzip, python3, p7zip,
   and unar (or unrar / 7zz). pwsh (PowerShell) is needed to paste intact
   Magincia onto the map; without it Magincia is bare ground.
+  It installs the latest client and the HD art (INSTALL_HD_ART=0 to skip);
+  run it again to update both.
 
 LOGGING IN
   New player: type any new username and password at the login screen.
@@ -62,5 +78,6 @@ MANUAL SETUP (no installer)
 
 ## License
   The client is TazUO (https://github.com/PlayTazUO/TazUO), a ClassicUO fork,
-  BSD 2-Clause, with small UO Smallz changes (chat window, Groups button).
+  BSD 2-Clause, with small UO Smallz changes (chat window, Groups button,
+  HD art drawn at the art's own size).
   See the notices folder: license, notice, and the full change patch.

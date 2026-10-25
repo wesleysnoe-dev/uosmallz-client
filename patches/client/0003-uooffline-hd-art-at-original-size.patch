@@ -1,0 +1,756 @@
+diff --git a/src/ClassicUO.Assets/ExternalImageLoader.cs b/src/ClassicUO.Assets/ExternalImageLoader.cs
+index e321c54..9da6946 100644
+--- a/src/ClassicUO.Assets/ExternalImageLoader.cs
++++ b/src/ClassicUO.Assets/ExternalImageLoader.cs
+@@ -11,7 +11,7 @@ namespace ClassicUO.Assets
+ {
+     public class ExternalImageLoader
+     {
+-        private const string IMAGES_FOLDER = "ExternalImages", GUMP_EXTERNAL_FOLDER = "gumps", ART_EXTERNAL_FOLDER = "art";
++        private const string IMAGES_FOLDER = "ExternalImages", GUMP_EXTERNAL_FOLDER = "gumps", ART_EXTERNAL_FOLDER = "art", LAND_EXTERNAL_FOLDER = "land";
+ 
+         private string exePath;
+         private string _uoDirectory;
+@@ -317,6 +317,46 @@ namespace ClassicUO.Assets
+             {
+                 Directory.CreateDirectory(artPath);
+             }
++
++            // Land tiles share the art index below 0x4000, so land/0x0003.png is art entry 3 (the art folder adds 0x4000).
++            string landPath = Path.Combine(exePath, IMAGES_FOLDER, LAND_EXTERNAL_FOLDER);
++
++            if (Directory.Exists(landPath))
++            {
++                foreach (string file in FindImageFiles(landPath))
++                {
++                    if (TryParseId(Path.GetFileNameWithoutExtension(file), out uint tile) && tile < 0x4000)
++                        art_availableFilePaths[tile] = file;
++                }
++            }
++
++            // An HD art pack (art/, gumps/, land/) in an HDArt folder beside the client folder: it stays put when a
++            // launcher replaces the client folder on an update. Anything in ExternalImages wins over it.
++            string pack = Path.GetFullPath(Path.Combine(exePath, "..", "HDArt"));
++
++            if (Directory.Exists(pack))
++            {
++                foreach (string folder in new[] { GUMP_EXTERNAL_FOLDER, ART_EXTERNAL_FOLDER, LAND_EXTERNAL_FOLDER })
++                {
++                    string dir = Path.Combine(pack, folder);
++
++                    if (!Directory.Exists(dir))
++                        continue;
++
++                    foreach (string file in FindImageFiles(dir))
++                    {
++                        if (!TryParseId(Path.GetFileNameWithoutExtension(file), out uint id))
++                            continue;
++
++                        if (folder == GUMP_EXTERNAL_FOLDER)
++                            gump_availableFilePaths.TryAdd(id, file);
++                        else if (folder == ART_EXTERNAL_FOLDER)
++                            art_availableFilePaths.TryAdd(id + 0x4000, file);
++                        else if (id < 0x4000)
++                            art_availableFilePaths.TryAdd(id, file);
++                    }
++                }
++            }
+         }
+ 
+         public void LoadResourceAssets(GumpsLoader gumps)
+diff --git a/src/ClassicUO.Client/Game/Data/StaticFilters.cs b/src/ClassicUO.Client/Game/Data/StaticFilters.cs
+index a04bd09..2fab1f1 100644
+--- a/src/ClassicUO.Client/Game/Data/StaticFilters.cs
++++ b/src/ClassicUO.Client/Game/Data/StaticFilters.cs
+@@ -356,7 +356,8 @@ namespace ClassicUO.Game.Data
+                 {
+                     ref readonly SpriteInfo artInfo = ref Client.Game.UO.Arts.GetArt(graphic);
+ 
+-                    if (ApplyBorderToAtlasRegion(atlasPixels, atlasTexture.Width, atlasTexture.Height, artInfo.UV))
++                    // PixelUV: the region in this page's own pixels (an HD page holds the art at 2x-4x)
++                    if (ApplyBorderToAtlasRegion(atlasPixels, atlasTexture.Width, atlasTexture.Height, artInfo.PixelUV))
+                     {
+                         atlasModified = true;
+                     }
+diff --git a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/ArtTexture/HuedTexture.cs b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/ArtTexture/HuedTexture.cs
+index 90ba749..7200a2f 100644
+--- a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/ArtTexture/HuedTexture.cs
++++ b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/ArtTexture/HuedTexture.cs
+@@ -98,7 +98,12 @@ internal class HuedTexture : IImage, IDisposable
+         Rectangle actualUv = Client.Game.UO.Arts.GetRealArtBounds(graphic);
+ 
+         Size = new Point(actualUv.Width, actualUv.Height);
+-        _atlasRegion = new TextureRegion(new TextureRegion(artInfo.Texture, artInfo.UV), actualUv);
++        // on an HD atlas page (ScaledTexture2D) the regions are in the page's pixels; Size stays the art's own
++        int s = ScaledTexture2D.ScaleOf(artInfo.Texture);
++        _atlasRegion = new TextureRegion(
++            new TextureRegion(artInfo.Texture, artInfo.PixelUV),
++            new Rectangle(actualUv.X * s, actualUv.Y * s, actualUv.Width * s, actualUv.Height * s)
++        );
+ 
+         SetColorByHue(hue);
+     }
+diff --git a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraGumpTexture.cs b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraGumpTexture.cs
+index 5313e04..e2859ec 100644
+--- a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraGumpTexture.cs
++++ b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraGumpTexture.cs
+@@ -23,7 +23,8 @@ public class MyraGumpTexture : Image
+             // gumpInfo.UV is the sub-rectangle within the shared atlas texture.
+             // Passing just the Texture2D would render the entire atlas page;
+             // supplying gumpInfo.UV scopes it to only this sprite.
+-            Renderable = new TextureRegion(gumpInfo.Texture, gumpInfo.UV);
++            // PixelUV: on an HD atlas page UV is in the gump's own pixels, and Myra needs the page's
++            Renderable = new TextureRegion(gumpInfo.Texture, gumpInfo.PixelUV);
+         }
+ 
+         MaxWidth = maxSize;
+diff --git a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraLandTexture.cs b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraLandTexture.cs
+index e7fe4a0..80fc246 100644
+--- a/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraLandTexture.cs
++++ b/src/ClassicUO.Client/Game/UI/MyraWindows/Widgets/MyraLandTexture.cs
+@@ -23,7 +23,8 @@ public class MyraLandTexture : Image
+             // landInfo.UV is the sub-rectangle within the shared atlas texture.
+             // Passing just the Texture2D would render the entire atlas page;
+             // supplying landInfo.UV scopes it to only this sprite.
+-            Renderable = new TextureRegion(landInfo.Texture, landInfo.UV);
++            // PixelUV: on an HD atlas page UV is in the tile's own pixels, and Myra needs the page's
++            Renderable = new TextureRegion(landInfo.Texture, landInfo.PixelUV);
+         }
+ 
+         MaxWidth = maxSize;
+diff --git a/src/ClassicUO.Renderer/Arts/Art.cs b/src/ClassicUO.Renderer/Arts/Art.cs
+index c3c0987..47f6231 100644
+--- a/src/ClassicUO.Renderer/Arts/Art.cs
++++ b/src/ClassicUO.Renderer/Arts/Art.cs
+@@ -19,16 +19,38 @@ namespace ClassicUO.Renderer.Arts
+         private readonly Rectangle[] _realArtBounds;
+         private readonly ArtLoader _artLoader;
+         private readonly HuesLoader _huesLoader;
++        private readonly GraphicsDevice _device;
++        private readonly TextureAtlas[] _hdAtlases = new TextureAtlas[5];
+ 
+         public Art(ArtLoader artLoader, HuesLoader huesLoader, GraphicsDevice device)
+         {
+             _artLoader = artLoader;
+             _huesLoader = huesLoader;
++            _device = device;
+             _atlas = new TextureAtlas(device, 4096, 4096, SurfaceFormat.Color);
+             _spriteInfos = new SpriteInfo[_artLoader.File.Entries.Length];
+             _realArtBounds = new Rectangle[_spriteInfos.Length];
+         }
+ 
++        /// <summary>
++        ///     An ExternalImages PNG exactly 2x, 3x or 4x the size of the MUL art is an HD version of it (tools/hd-art in
++        ///     UO Offline makes these): it goes on an HD atlas page so it draws at the art's own size. Any other size is
++        ///     a plain replacement, drawn at its own size as before. Returns 1 for a plain one.
++        /// </summary>
++        public static int HdScale(int width, int height, int originalWidth, int originalHeight)
++        {
++            for (int s = 2; s <= 4; s++)
++            {
++                if (originalWidth > 0 && width == originalWidth * s && height == originalHeight * s)
++                    return s;
++            }
++
++            return 1;
++        }
++
++        private TextureAtlas HdAtlas(int scale) =>
++            _hdAtlases[scale] ??= new TextureAtlas(_device, 4096, 4096, SurfaceFormat.Color, scale);
++
+         public ref readonly SpriteInfo GetLand(uint idx)
+             => ref Get((uint)(idx & ~0x4000));
+ 
+@@ -50,6 +72,11 @@ namespace ClassicUO.Renderer.Arts
+             if (loadedFromPNG)
+             {
+                 ExternalImageLoader.Instance.ClearArtPixelCache(loadedIdx);
++
++                // CPU consumers (hued UI icons, grid containers) work in the art's own pixels and bounds
++                ArtInfo original = _artLoader.GetArt(loadedIdx);
++                if (!original.Pixels.IsEmpty && HdScale(artInfo.Width, artInfo.Height, original.Width, original.Height) > 1)
++                    return original;
+             }
+ 
+             return artInfo;
+@@ -216,7 +243,16 @@ namespace ClassicUO.Renderer.Arts
+ 
+                 if (!artInfo.Pixels.IsEmpty)
+                 {
+-                    spriteInfo.Texture = _atlas.AddSprite(
++                    int scale = 1;
++                    ArtInfo original = default;
++                    if (loadedFromPNG)
++                    {
++                        original = _artLoader.GetArt(idx);
++                        if (!original.Pixels.IsEmpty)
++                            scale = HdScale(artInfo.Width, artInfo.Height, original.Width, original.Height);
++                    }
++
++                    spriteInfo.Texture = (scale > 1 ? HdAtlas(scale) : _atlas).AddSprite(
+                         artInfo.Pixels,
+                         artInfo.Width,
+                         artInfo.Height,
+@@ -229,22 +265,25 @@ namespace ClassicUO.Renderer.Arts
+                         ExternalImageLoader.Instance.ClearArtPixelCache(idx);
+                     }
+ 
++                    // hit testing and the real bounds go by the art at its own size
++                    ArtInfo shape = scale > 1 ? original : artInfo;
++
+                     if (idx > 0x4000)
+                     {
+                         idx -= 0x4000;
+-                        _picker.Set(idx, artInfo.Width, artInfo.Height, artInfo.Pixels);
++                        _picker.Set(idx, shape.Width, shape.Height, shape.Pixels);
+ 
+                         int pos1 = 0;
+-                        int minX = artInfo.Width,
+-                            minY = artInfo.Height,
++                        int minX = shape.Width,
++                            minY = shape.Height,
+                             maxX = 0,
+                             maxY = 0;
+ 
+-                        for (int y = 0; y < artInfo.Height; ++y)
++                        for (int y = 0; y < shape.Height; ++y)
+                         {
+-                            for (int x = 0; x < artInfo.Width; ++x)
++                            for (int x = 0; x < shape.Width; ++x)
+                             {
+-                                if (artInfo.Pixels[pos1++] != 0)
++                                if (shape.Pixels[pos1++] != 0)
+                                 {
+                                     minX = Math.Min(minX, x);
+                                     maxX = Math.Max(maxX, x);
+diff --git a/src/ClassicUO.Renderer/Batcher2D.cs b/src/ClassicUO.Renderer/Batcher2D.cs
+index b891ce3..e46c170 100644
+--- a/src/ClassicUO.Renderer/Batcher2D.cs
++++ b/src/ClassicUO.Renderer/Batcher2D.cs
+@@ -152,10 +152,10 @@ namespace ClassicUO.Renderer
+             float sourceX, sourceY, sourceW, sourceH;
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Width;
+-                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 scale.X *= sourceRectangle.Value.Width;
+                 scale.Y *= sourceRectangle.Value.Height;
+             }
+@@ -165,8 +165,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                scale.X *= texture.Width;
+-                scale.Y *= texture.Height;
++                scale.X *= ScaledTexture2D.LogicalWidthOf(texture);
++                scale.Y *= ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             EnsureSize();
+@@ -379,10 +379,10 @@ namespace ClassicUO.Renderer
+             ref PositionNormalTextureColor4 vertex = ref _vertexInfo[_numSprites];
+ 
+             // we need to apply an offset to the texture
+-            float sourceX = ((sourceRect.X + 0.5f) / (float)texture.Width);
+-            float sourceY = ((sourceRect.Y + 0.5f) / (float)texture.Height);
+-            float sourceW = ((sourceRect.Width - 1f) / (float)texture.Width);
+-            float sourceH = ((sourceRect.Height - 1f) / (float)texture.Height);
++            float sourceX = ((sourceRect.X + 0.5f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++            float sourceY = ((sourceRect.Y + 0.5f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
++            float sourceW = ((sourceRect.Width - 1f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++            float sourceH = ((sourceRect.Height - 1f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
+ 
+             vertex.TextureCoordinate0.X = (_cornerOffsetX[0] * sourceW) + sourceX;
+             vertex.TextureCoordinate0.Y = (_cornerOffsetY[0] * sourceH) + sourceY;
+@@ -464,10 +464,10 @@ namespace ClassicUO.Renderer
+             vertex.Position3.Z = depth;
+ 
+ 
+-            float sourceX = ((sourceRect.X + 0.5f) / (float)texture.Width);
+-            float sourceY = ((sourceRect.Y + 0.5f) / (float)texture.Height);
+-            float sourceW = ((sourceRect.Width - 1f) / (float)texture.Width);
+-            float sourceH = ((sourceRect.Height - 1f) / (float)texture.Height);
++            float sourceX = ((sourceRect.X + 0.5f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++            float sourceY = ((sourceRect.Y + 0.5f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
++            float sourceW = ((sourceRect.Width - 1f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++            float sourceH = ((sourceRect.Height - 1f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
+ 
+             byte effects = (byte)((flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None) & (SpriteEffects)0x03);
+ 
+@@ -557,10 +557,10 @@ namespace ClassicUO.Renderer
+                 vertex.Position2.Z = depth;
+                 vertex.Position3.Z = depth;
+ 
+-                float sourceX = ((sourceRect.X + 0.5f) / (float)texture.Width);
+-                float sourceY = ((sourceRect.Y + 0.5f) / (float)texture.Height);
+-                float sourceW = ((sourceRect.Width - 1f) / (float)texture.Width);
+-                float sourceH = ((sourceRect.Height - 1f) / (float)texture.Height);
++                float sourceX = ((sourceRect.X + 0.5f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceY = ((sourceRect.Y + 0.5f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
++                float sourceW = ((sourceRect.Width - 1f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceH = ((sourceRect.Height - 1f) / (float)ScaledTexture2D.LogicalHeightOf(texture));
+ 
+                 byte effects = (byte)((flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None) & (SpriteEffects)0x03);
+ 
+@@ -621,10 +621,10 @@ namespace ClassicUO.Renderer
+                 vertex.Position2.Z = depth;
+                 vertex.Position3.Z = depth;
+ 
+-                float sourceX = ((sourceRect.X + 0.5f) / (float)texture.Width);
+-                float sourceY = ((sourceRect.Y + 0.5f + h03) / (float)texture.Height);
+-                float sourceW = ((sourceRect.Width - 1f) / (float)texture.Width);
+-                float sourceH = ((sourceRect.Height - 1f - h03) / (float)texture.Height);
++                float sourceX = ((sourceRect.X + 0.5f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceY = ((sourceRect.Y + 0.5f + h03) / (float)ScaledTexture2D.LogicalHeightOf(texture));
++                float sourceW = ((sourceRect.Width - 1f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceH = ((sourceRect.Height - 1f - h03) / (float)ScaledTexture2D.LogicalHeightOf(texture));
+ 
+                 byte effects = (byte)((flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None) & (SpriteEffects)0x03);
+ 
+@@ -685,10 +685,10 @@ namespace ClassicUO.Renderer
+                 vertex.Position2.Z = depth;
+                 vertex.Position3.Z = depth;
+ 
+-                float sourceX = ((sourceRect.X + 0.5f) / (float)texture.Width);
+-                float sourceY = ((sourceRect.Y + 0.5f + h06) / (float)texture.Height);
+-                float sourceW = ((sourceRect.Width - 1f) / (float)texture.Width);
+-                float sourceH = ((sourceRect.Height - 1f - h06) / (float)texture.Height);
++                float sourceX = ((sourceRect.X + 0.5f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceY = ((sourceRect.Y + 0.5f + h06) / (float)ScaledTexture2D.LogicalHeightOf(texture));
++                float sourceW = ((sourceRect.Width - 1f) / (float)ScaledTexture2D.LogicalWidthOf(texture));
++                float sourceH = ((sourceRect.Height - 1f - h06) / (float)ScaledTexture2D.LogicalHeightOf(texture));
+ 
+                 byte effects = (byte)((flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None) & (SpriteEffects)0x03);
+ 
+@@ -949,7 +949,7 @@ namespace ClassicUO.Renderer
+             Texture2D texture,
+             Vector2 position,
+             Vector3 color
+-        ) => AddSprite(texture, 0f, 0f, 1f, 1f, position.X, position.Y, texture.Width, texture.Height, color, 0f, 0f, 0f, 1f, 0f, 0);
++        ) => AddSprite(texture, 0f, 0f, 1f, 1f, position.X, position.Y, ScaledTexture2D.LogicalWidthOf(texture), ScaledTexture2D.LogicalHeightOf(texture), color, 0f, 0f, 0f, 1f, 0f, 0);
+ 
+         public void Draw
+         (
+@@ -964,10 +964,10 @@ namespace ClassicUO.Renderer
+ 
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = sourceRectangle.Value.Width / (float)texture.Width;
+-                sourceH = sourceRectangle.Value.Height / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = sourceRectangle.Value.Width / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = sourceRectangle.Value.Height / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 destW = sourceRectangle.Value.Width;
+                 destH = sourceRectangle.Value.Height;
+             }
+@@ -977,8 +977,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                destW = texture.Width;
+-                destH = texture.Height;
++                destW = ScaledTexture2D.LogicalWidthOf(texture);
++                destH = ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             AddSprite(texture, sourceX, sourceY, sourceW, sourceH, position.X, position.Y, destW, destH, color, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0);
+@@ -1003,10 +1003,10 @@ namespace ClassicUO.Renderer
+ 
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Width;
+-                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 destW *= sourceRectangle.Value.Width;
+                 destH *= sourceRectangle.Value.Height;
+             }
+@@ -1016,8 +1016,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                destW *= texture.Width;
+-                destH *= texture.Height;
++                destW *= ScaledTexture2D.LogicalWidthOf(texture);
++                destH *= ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             AddSprite
+@@ -1032,8 +1032,8 @@ namespace ClassicUO.Renderer
+                 destW,
+                 destH,
+                 color,
+-                origin.X / sourceW / (float)texture.Width,
+-                origin.Y / sourceH / (float)texture.Height,
++                origin.X / sourceW / (float)ScaledTexture2D.LogicalWidthOf(texture),
++                origin.Y / sourceH / (float)ScaledTexture2D.LogicalHeightOf(texture),
+                 (float)Math.Sin(rotation),
+                 (float)Math.Cos(rotation),
+                 layerDepth,
+@@ -1057,10 +1057,10 @@ namespace ClassicUO.Renderer
+             float sourceX, sourceY, sourceW, sourceH;
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Width;
+-                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 scale.X *= sourceRectangle.Value.Width;
+                 scale.Y *= sourceRectangle.Value.Height;
+             }
+@@ -1070,8 +1070,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                scale.X *= texture.Width;
+-                scale.Y *= texture.Height;
++                scale.X *= ScaledTexture2D.LogicalWidthOf(texture);
++                scale.Y *= ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             AddSprite
+@@ -1086,8 +1086,8 @@ namespace ClassicUO.Renderer
+                 scale.X,
+                 scale.Y,
+                 color,
+-                origin.X / sourceW / (float)texture.Width,
+-                origin.Y / sourceH / (float)texture.Height,
++                origin.X / sourceW / (float)ScaledTexture2D.LogicalWidthOf(texture),
++                origin.Y / sourceH / (float)ScaledTexture2D.LogicalHeightOf(texture),
+                 (float)Math.Sin(rotation),
+                 (float)Math.Cos(rotation),
+                 layerDepth,
+@@ -1130,10 +1130,10 @@ namespace ClassicUO.Renderer
+             float sourceX, sourceY, sourceW, sourceH;
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = sourceRectangle.Value.Width / (float)texture.Width;
+-                sourceH = sourceRectangle.Value.Height / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = sourceRectangle.Value.Width / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = sourceRectangle.Value.Height / (float)ScaledTexture2D.LogicalHeightOf(texture);
+             }
+             else
+             {
+@@ -1179,16 +1179,16 @@ namespace ClassicUO.Renderer
+             float sourceX, sourceY, sourceW, sourceH;
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(
+                     Math.Abs(sourceRectangle.Value.Width),
+                     Utility.MathHelper.MachineEpsilonFloat
+-                ) / (float)texture.Width;
++                ) / (float)ScaledTexture2D.LogicalWidthOf(texture);
+                 sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(
+                     Math.Abs(sourceRectangle.Value.Height),
+                     Utility.MathHelper.MachineEpsilonFloat
+-                ) / (float)texture.Height;
++                ) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+             }
+             else
+             {
+@@ -1210,8 +1210,8 @@ namespace ClassicUO.Renderer
+                 destinationRectangle.Width,
+                 destinationRectangle.Height,
+                 color,
+-                origin.X / sourceW / (float)texture.Width,
+-                origin.Y / sourceH / (float)texture.Height,
++                origin.X / sourceW / (float)ScaledTexture2D.LogicalWidthOf(texture),
++                origin.Y / sourceH / (float)ScaledTexture2D.LogicalHeightOf(texture),
+                 (float)Math.Sin(rotation),
+                 (float)Math.Cos(rotation),
+                 layerDepth,
+@@ -1236,10 +1236,10 @@ namespace ClassicUO.Renderer
+             float sourceX, sourceY, sourceW, sourceH;
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Width;
+-                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 scale.X *= sourceRectangle.Value.Width;
+                 scale.Y *= sourceRectangle.Value.Height;
+             }
+@@ -1249,8 +1249,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                scale.X *= texture.Width;
+-                scale.Y *= texture.Height;
++                scale.X *= ScaledTexture2D.LogicalWidthOf(texture);
++                scale.Y *= ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             AddSprite
+@@ -1265,8 +1265,8 @@ namespace ClassicUO.Renderer
+                 scale.X,
+                 scale.Y,
+                 hue,
+-                origin.X / sourceW / (float)texture.Width,
+-                origin.Y / sourceH / (float)texture.Height,
++                origin.X / sourceW / (float)ScaledTexture2D.LogicalWidthOf(texture),
++                origin.Y / sourceH / (float)ScaledTexture2D.LogicalHeightOf(texture),
+                 (float)Math.Sin(rotation),
+                 (float)Math.Cos(rotation),
+                 layerDepth,
+@@ -1295,10 +1295,10 @@ namespace ClassicUO.Renderer
+ 
+             if (sourceRectangle.HasValue)
+             {
+-                sourceX = sourceRectangle.Value.X / (float)texture.Width;
+-                sourceY = sourceRectangle.Value.Y / (float)texture.Height;
+-                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Width;
+-                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)texture.Height;
++                sourceX = sourceRectangle.Value.X / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceY = sourceRectangle.Value.Y / (float)ScaledTexture2D.LogicalHeightOf(texture);
++                sourceW = Math.Sign(sourceRectangle.Value.Width) * Math.Max(Math.Abs(sourceRectangle.Value.Width), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalWidthOf(texture);
++                sourceH = Math.Sign(sourceRectangle.Value.Height) * Math.Max(Math.Abs(sourceRectangle.Value.Height), Utility.MathHelper.MachineEpsilonFloat) / (float)ScaledTexture2D.LogicalHeightOf(texture);
+                 destW *= sourceRectangle.Value.Width;
+                 destH *= sourceRectangle.Value.Height;
+             }
+@@ -1308,8 +1308,8 @@ namespace ClassicUO.Renderer
+                 sourceY = 0.0f;
+                 sourceW = 1.0f;
+                 sourceH = 1.0f;
+-                destW *= texture.Width;
+-                destH *= texture.Height;
++                destW *= ScaledTexture2D.LogicalWidthOf(texture);
++                destH *= ScaledTexture2D.LogicalHeightOf(texture);
+             }
+ 
+             AddSprite
+@@ -1324,8 +1324,8 @@ namespace ClassicUO.Renderer
+                 destW,
+                 destH,
+                 hue,
+-                origin.X / sourceW / (float)texture.Width,
+-                origin.Y / sourceH / (float)texture.Height,
++                origin.X / sourceW / (float)ScaledTexture2D.LogicalWidthOf(texture),
++                origin.Y / sourceH / (float)ScaledTexture2D.LogicalHeightOf(texture),
+                 (float)Math.Sin(rotation),
+                 (float)Math.Cos(rotation),
+                 layerDepth,
+diff --git a/src/ClassicUO.Renderer/Gumps/Gump.cs b/src/ClassicUO.Renderer/Gumps/Gump.cs
+index 0f1f2f5..349dd7a 100644
+--- a/src/ClassicUO.Renderer/Gumps/Gump.cs
++++ b/src/ClassicUO.Renderer/Gumps/Gump.cs
+@@ -9,16 +9,25 @@ namespace ClassicUO.Renderer.Gumps
+         private readonly SpriteInfo[] _spriteInfos;
+         private readonly PixelPicker _picker = new PixelPicker(true);
+         private readonly GumpsLoader _gumpsLoader;
++        private readonly GraphicsDevice _device;
++        private readonly TextureAtlas[] _hdAtlases = new TextureAtlas[5];
++
++        // MiniMapGump draws the radar into these two gumps' own atlas regions, at their original size
++        private const uint SmallMiniMap = 5010, BigMiniMap = 5011;
+ 
+         public GumpsLoader GetGumpsLoader => _gumpsLoader;
+ 
+         public Gump(GumpsLoader gumpsLoader, GraphicsDevice device)
+         {
+             _gumpsLoader = gumpsLoader;
++            _device = device;
+             _atlas = new TextureAtlas(device, 4096, 4096, SurfaceFormat.Color);
+             _spriteInfos = new SpriteInfo[gumpsLoader.File.Entries.Length];
+         }
+ 
++        private TextureAtlas HdAtlas(int scale) =>
++            _hdAtlases[scale] ??= new TextureAtlas(_device, 4096, 4096, SurfaceFormat.Color, scale);
++
+         public ref readonly SpriteInfo GetGump(uint idx)
+         {
+             if (idx >= _spriteInfos.Length)
+@@ -37,14 +46,37 @@ namespace ClassicUO.Renderer.Gumps
+                 }
+                 if (!gumpInfo.Pixels.IsEmpty)
+                 {
+-                    spriteInfo.Texture = _atlas.AddSprite(
++                    // an HD version (exactly 2x-4x the MUL gump) draws at the gump's own size; see Art.HdScale
++                    int scale = 1;
++                    GumpInfo original = default;
++                    if (loadedFromPNG && idx != SmallMiniMap && idx != BigMiniMap)
++                    {
++                        original = _gumpsLoader.GetGump(idx);
++                        if (!original.Pixels.IsEmpty)
++                            scale = Arts.Art.HdScale(gumpInfo.Width, gumpInfo.Height, original.Width, original.Height);
++                    }
++                    else if (loadedFromPNG)
++                    {
++                        // the minimap gumps keep their MUL art, HD or not
++                        GumpInfo plain = _gumpsLoader.GetGump(idx);
++                        if (!plain.Pixels.IsEmpty)
++                        {
++                            ExternalImageLoader.Instance.ClearGumpPixelCache(idx);
++                            gumpInfo = plain;
++                            loadedFromPNG = false;
++                        }
++                    }
++
++                    spriteInfo.Texture = (scale > 1 ? HdAtlas(scale) : _atlas).AddSprite(
+                         gumpInfo.Pixels,
+                         gumpInfo.Width,
+                         gumpInfo.Height,
+                         out spriteInfo.UV
+                     );
+ 
+-                    _picker.Set(idx, gumpInfo.Width, gumpInfo.Height, gumpInfo.Pixels);
++                    // hit testing goes by the gump at its own size
++                    GumpInfo shape = scale > 1 ? original : gumpInfo;
++                    _picker.Set(idx, shape.Width, shape.Height, shape.Pixels);
+ 
+                     // Clear the pixel cache from PNG Loader since it's now in the atlas
+                     if (loadedFromPNG)
+diff --git a/src/ClassicUO.Renderer/ScaledTexture2D.cs b/src/ClassicUO.Renderer/ScaledTexture2D.cs
+new file mode 100644
+index 0000000..8b7f24a
+--- /dev/null
++++ b/src/ClassicUO.Renderer/ScaledTexture2D.cs
+@@ -0,0 +1,29 @@
++using Microsoft.Xna.Framework.Graphics;
++
++namespace ClassicUO.Renderer
++{
++    /// <summary>
++    ///     An atlas page holding art at <see cref="Scale"/> times its original size (an HD replacement from
++    ///     ExternalImages, exactly 2x, 3x or 4x the MUL art). Sprites on it keep their UV in original pixels, and
++    ///     the batcher divides by <see cref="LogicalWidth"/> / <see cref="LogicalHeight"/>, so every draw call
++    ///     places the art at its own size and samples the HD pixels: layout, hit testing and positions are
++    ///     unchanged. Code reading the page's pixels directly uses <see cref="SpriteInfo.PixelUV"/>.
++    /// </summary>
++    public sealed class ScaledTexture2D : Texture2D
++    {
++        public readonly int Scale;
++
++        public ScaledTexture2D(GraphicsDevice device, int width, int height, SurfaceFormat format, int scale)
++            : base(device, width, height, false, format)
++        {
++            Scale = scale;
++        }
++
++        public int LogicalWidth => Width / Scale;
++        public int LogicalHeight => Height / Scale;
++
++        public static int LogicalWidthOf(Texture2D texture) => texture is ScaledTexture2D s ? s.LogicalWidth : texture.Width;
++        public static int LogicalHeightOf(Texture2D texture) => texture is ScaledTexture2D s ? s.LogicalHeight : texture.Height;
++        public static int ScaleOf(Texture2D texture) => texture is ScaledTexture2D s ? s.Scale : 1;
++    }
++}
+diff --git a/src/ClassicUO.Renderer/SpriteInfo.cs b/src/ClassicUO.Renderer/SpriteInfo.cs
+index 8ca167e..e79444e 100644
+--- a/src/ClassicUO.Renderer/SpriteInfo.cs
++++ b/src/ClassicUO.Renderer/SpriteInfo.cs
+@@ -9,6 +9,20 @@ namespace ClassicUO.Renderer
+         public Rectangle UV;
+         public Point Center;
+ 
++        /// <summary>
++        ///     <see cref="UV"/> in the texture's own pixels: the same as UV, except on an HD atlas page
++        ///     (<see cref="ScaledTexture2D"/>), where UV stays in the art's original pixels. For code that reads the
++        ///     page's pixels or hands the region to another renderer (Myra); batcher draws take UV.
++        /// </summary>
++        public Rectangle PixelUV
++        {
++            get
++            {
++                int s = Texture == null ? 1 : ScaledTexture2D.ScaleOf(Texture);
++                return s == 1 ? UV : new Rectangle(UV.X * s, UV.Y * s, UV.Width * s, UV.Height * s);
++            }
++        }
++
+         public static readonly SpriteInfo Empty = new SpriteInfo { Texture = null };
+     }
+ }
+diff --git a/src/ClassicUO.Renderer/TextureAtlas.cs b/src/ClassicUO.Renderer/TextureAtlas.cs
+index 713d30c..989c4d1 100644
+--- a/src/ClassicUO.Renderer/TextureAtlas.cs
++++ b/src/ClassicUO.Renderer/TextureAtlas.cs
+@@ -13,14 +13,20 @@ namespace ClassicUO.Renderer
+         private readonly SurfaceFormat _format;
+         private readonly GraphicsDevice _device;
+         private readonly List<Texture2D> _textureList;
++        private readonly int _scale;
+         private Packer _packer;
+ 
+-        public TextureAtlas(GraphicsDevice device, int width, int height, SurfaceFormat format)
++        /// <param name="scale">
++        ///     1 for ordinary art. 2-4 for an HD atlas: sprites are added at scale times their original size, packed in
++        ///     original pixels, and the pages are <see cref="ScaledTexture2D"/>, so the UVs handed out stay in original pixels.
++        /// </param>
++        public TextureAtlas(GraphicsDevice device, int width, int height, SurfaceFormat format, int scale = 1)
+         {
+             _device = device;
+             _width = width;
+             _height = height;
+             _format = format;
++            _scale = scale;
+ 
+             _textureList = new List<Texture2D>();
+         }
+@@ -56,17 +62,19 @@ namespace ClassicUO.Renderer
+                 CreateNewTexture2D();
+             }
+ 
+-            while (!_packer.PackRect(width, height, out pr))
++            // an HD sprite is packed by its original size; width and height are its pixels (scale times that)
++            while (!_packer.PackRect(width / _scale, height / _scale, out pr))
+             {
+                 CreateNewTexture2D();
+                 index = _textureList.Count - 1;
+             }
+ 
+             Texture2D texture = _textureList[index];
++            var at = new Rectangle(pr.X * _scale, pr.Y * _scale, width, height);
+ 
+             fixed (uint* src = pixels)
+             {
+-                texture.SetDataPointerEXT(0, pr, (IntPtr)src, sizeof(uint) * width * height);
++                texture.SetDataPointerEXT(0, at, (IntPtr)src, sizeof(uint) * width * height);
+             }
+ 
+             return texture;
+@@ -74,12 +82,14 @@ namespace ClassicUO.Renderer
+ 
+         private void CreateNewTexture2D()
+         {
+-            Utility.Logging.Log.Trace($"creating texture: {_width}x{_height} {_format}");
+-            var texture = new Texture2D(_device, _width, _height, false, _format);
++            Utility.Logging.Log.Trace($"creating texture: {_width}x{_height} {_format}{(_scale > 1 ? $" at {_scale}x" : "")}");
++            Texture2D texture = _scale > 1
++                ? new ScaledTexture2D(_device, _width, _height, _format, _scale)
++                : new Texture2D(_device, _width, _height, false, _format);
+             _textureList.Add(texture);
+ 
+             _packer?.Dispose();
+-            _packer = new Packer(_width, _height);
++            _packer = new Packer(_width / _scale, _height / _scale);
+         }
+ 
+         public void SaveImages(string name)

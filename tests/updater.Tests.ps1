@@ -386,6 +386,43 @@ Check (-not (Test-Path -LiteralPath $out)) "download: partial file removed after
 Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force
 Remove-Item $root -Recurse -Force
 
+# ---- HD art ----
+$good = "a" * 64
+$info = Get-HdArtInfo ([pscustomobject]@{ file = "UOSmallz-HDArt-2x.zip"; size = 551811205; sha256 = $good.ToUpper() })
+Check ($info -and $info.Url -eq "${HdArtBaseUrl}UOSmallz-HDArt-2x.zip" -and $info.Sha256 -eq $good -and $info.Size -eq 551811205) "hd art: manifest read, URL from the allowlisted server only"
+Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "../evil.zip"; size = 1; sha256 = $good }))) "hd art: a path in the file name is refused"
+Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "pack.exe"; size = 1; sha256 = $good }))) "hd art: only a .zip is accepted"
+Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "pack.zip"; size = 1; sha256 = "abc" }))) "hd art: a malformed SHA-256 is refused"
+Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "pack.zip"; size = 0; sha256 = $good }))) "hd art: size 0 is refused"
+Check ($null -eq (Get-HdArtInfo $null)) "hd art: no manifest, nothing offered"
+
+$root = New-Root
+Set-File (Join-Path $root "Client\ClassicUO.Renderer.dll") "...ClassicUO.Renderer.TextureAtlas..."
+Check (-not (Test-ClientDrawsHdArt (Join-Path $root "Client"))) "hd art: a client without the patch is not offered the pack"
+Set-File (Join-Path $root "Client\ClassicUO.Renderer.dll") "...ClassicUO.Renderer.ScaledTexture2D..."
+Check (Test-ClientDrawsHdArt (Join-Path $root "Client")) "hd art: a client with the patch is"
+
+function New-FakePack([string]$dir, [string]$marker) {
+    $src = Join-Path $dir ("packsrc-" + [Guid]::NewGuid().ToString("N"))
+    Set-File (Join-Path $src "art\0x0001.png") $marker
+    Set-File (Join-Path $src "gumps\0x0001.png") $marker
+    $zip = Join-Path $dir ("pack-" + [Guid]::NewGuid().ToString("N") + ".zip")
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($src, $zip)
+    return $zip
+}
+$z1 = New-FakePack $root "pack one"
+Install-HdArt $root $z1 (Get-Sha256 $z1)
+Check ((Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack one") "hd art: installed into HDArt beside Client"
+Check ((Read-HdArtStamp (Join-Path $root "hdart-version.json")) -eq (Get-Sha256 $z1)) "hd art: stamp names the installed pack"
+$z2 = New-FakePack $root "pack two"
+$threw = $false; try { Install-HdArt $root $z2 $good } catch { $threw = $true }
+Check ($threw -and (Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack one") "hd art: a zip that doesn't match the SHA-256 is refused, the old pack stays"
+Check (-not (Test-Path -LiteralPath (Join-Path $root "HDArt.new"))) "hd art: nothing half-unpacked left behind"
+Install-HdArt $root $z2 (Get-Sha256 $z2)
+Check ((Read-F (Join-Path $root "HDArt\art\0x0001.png")) -eq "pack two" -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt.old"))) "hd art: a new pack replaces the old one"
+Remove-Item $root -Recurse -Force
+
 Write-Host ""
 Write-Host "$script:pass passed, $script:fail failed"
 exit $script:fail

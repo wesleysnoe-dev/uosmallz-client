@@ -14,6 +14,9 @@
 #     one, carry settings.json, Data\ (profiles, macros, gumps) and any other
 #     file of the player's across, swap the folders, and roll back on any
 #     failure. The previous client stays as Client.old until the next update.
+#   - HD art: once the client can draw it, offer the pack (Yes / No / Cancel =
+#     don't ask again) from the UO Smallz server into HDArt beside Client,
+#     checked against hd-art.json; again only when hd-art.json names a new one.
 #
 # Windows PowerShell 5.1. No token: the repo is public. Patterns (timeout,
 # silent failure, dialog, skip, launch.log) follow uo-offline-dev's
@@ -44,6 +47,13 @@ $AssetName  = "UOSmallz-Client-win-x64.zip"
 $SumsName   = "SHA256SUMS.txt"
 $TimeoutSec = 6
 
+# HD art (tools/hd-art in uo-offline-dev): about 0.5 GB, served by the UO Smallz
+# shard machine itself (hd-art serve), not by GitHub. What to expect (file
+# name, size, SHA-256) comes from hd-art.json in this repo over HTTPS, so a
+# download that does not match it is thrown away.
+$HdArtManifestUrl = "https://raw.githubusercontent.com/$Repo/main/hd-art.json"
+$HdArtBaseUrl     = "http://uosmallz.duckdns.org:2595/"   # allowlist: never read from a file
+
 function Get-Paths([string]$root) {
     return @{
         Root      = $root
@@ -55,6 +65,11 @@ function Get-Paths([string]$root) {
         Pending   = Join-Path $root "client-pending.json"
         Skip      = Join-Path $root "client-skipped.txt"
         Log       = Join-Path $root "launch.log"
+        HdArt      = Join-Path $root "HDArt"
+        HdArtNew   = Join-Path $root "HDArt.new"
+        HdArtOld   = Join-Path $root "HDArt.old"
+        HdArtStamp = Join-Path $root "hdart-version.json"
+        HdArtSkip  = Join-Path $root "hdart-skipped.txt"
     }
 }
 
@@ -499,6 +514,125 @@ function Merge-ClientSettings([string]$path, $defaults) {
     return $changed
 }
 
+# ---- HD art --------------------------------------------------------------
+# The pack lives in HDArt beside Client (the client reads it from there), so a
+# client update never copies it. hdart-version.json holds the SHA-256 of the
+# pack installed; hdart-skipped.txt the one the player said not to ask about.
+
+# Only a client with the HD art patch (patches/client/0003) draws the pack at
+# the art's own size; an older one would draw every item twice as big.
+function Test-ClientDrawsHdArt([string]$clientDir) {
+    $dll = Join-Path $clientDir "ClassicUO.Renderer.dll"
+    if (-not (Test-Path -LiteralPath $dll)) { return $false }
+    return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll)).Contains("ScaledTexture2D")
+}
+
+# hd-art.json { "file", "size", "sha256" } -> what to download, or $null when
+# it is missing or not what it should be.
+function Get-HdArtInfo($manifest) {
+    if ($null -eq $manifest) { return $null }
+    $file = [string]$manifest.file
+    $sha = ([string]$manifest.sha256).ToLower()
+    $size = 0L
+    try { $size = [long]$manifest.size } catch { return $null }
+    if ($file -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$' -or $sha -notmatch '^[0-9a-f]{64}$' -or $size -le 0) { return $null }
+    return @{ File = $file; Url = $HdArtBaseUrl + $file; Size = $size; Sha256 = $sha }
+}
+
+function Read-HdArtStamp([string]$path) {
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try { return ([string](Get-Content -LiteralPath $path -Raw | ConvertFrom-Json).sha256).ToLower() } catch { return $null }
+}
+
+function Write-HdArtStamp([string]$path, [string]$sha) {
+    $json = [ordered]@{ sha256 = $sha.ToLower(); installed = (Get-Date).ToString("s") } | ConvertTo-Json
+    [IO.File]::WriteAllText($path, $json, (New-Object Text.UTF8Encoding($false)))
+}
+
+# Check the zip, unpack it beside the installed pack, then swap. On any failure
+# the pack that was there stays.
+function Install-HdArt([string]$root, [string]$zip, [string]$expectedSha) {
+    $p = Get-Paths $root
+    if (-not (Test-Sha256 $zip $expectedSha)) { throw "the download does not match hd-art.json (SHA-256)" }
+    foreach ($d in @($p.HdArtNew, $p.HdArtOld)) {
+        if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d -Recurse -Force }
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $p.HdArtNew)
+        if (-not (Test-Path -LiteralPath (Join-Path $p.HdArtNew "art"))) { throw "the pack has no art folder" }
+    } catch {
+        $err = $_
+        Remove-Item -LiteralPath $p.HdArtNew -Recurse -Force -ErrorAction SilentlyContinue
+        throw $err
+    }
+    if (Test-Path -LiteralPath $p.HdArt) { Rename-Item -LiteralPath $p.HdArt -NewName "HDArt.old" }
+    try {
+        Rename-Item -LiteralPath $p.HdArtNew -NewName "HDArt"
+    } catch {
+        $err = $_
+        if (Test-Path -LiteralPath $p.HdArtOld) { Rename-Item -LiteralPath $p.HdArtOld -NewName "HDArt" }
+        throw $err
+    }
+    Write-HdArtStamp $p.HdArtStamp $expectedSha
+    Remove-Item -LiteralPath $p.HdArtOld -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# After the client check: offer the pack when the client can draw it and
+# hd-art.json names one this install doesn't have. Silent on any failure.
+function Invoke-HdArt([string]$root) {
+    $p = Get-Paths $root
+    try {
+        if (-not (Test-ClientDrawsHdArt $p.Client)) { return }   # the client update brings that first
+        try {
+            $info = Get-HdArtInfo (Invoke-RestMethod -Uri $HdArtManifestUrl -Headers @{ "User-Agent" = "UOSmallz-launcher" } -TimeoutSec $TimeoutSec)
+        } catch {
+            Write-LaunchLog $root "HD art check skipped: $($_.Exception.Message)"
+            return
+        }
+        if ($null -eq $info) { Write-LaunchLog $root "HD art check: hd-art.json missing or not valid"; return }
+        if ((Read-HdArtStamp $p.HdArtStamp) -eq $info.Sha256) { return }
+        if ((Test-Path -LiteralPath $p.HdArtSkip) -and ((Get-Content -LiteralPath $p.HdArtSkip -Raw).Trim() -eq $info.Sha256)) { return }
+
+        $mb = [math]::Round($info.Size / 1MB)
+        $what = "HD art for UO Smallz is available"
+        if (Test-Path -LiteralPath $p.HdArt) { $what = "Updated HD art for UO Smallz is available" }
+        $a = Show-Message ("${what}: sharper items, buildings, windows and ground, drawn at their normal size " +
+            "(the difference shows most when you zoom in). It is a $mb MB download from the UO Smallz server.`n`n" +
+            "Yes = download it now (the game starts afterwards)`nNo = not now (you are asked again next time)`n" +
+            "Cancel = don't ask again for this version") "YesNoCancel" "Question"
+        Write-LaunchLog $root "HD art $($info.Sha256.Substring(0, 12)) offered: $a"
+        if ($a -eq "Cancel") { Set-Content -LiteralPath $p.HdArtSkip -Value $info.Sha256 -Encoding ASCII; return }
+        if ($a -ne "Yes") { return }
+
+        while ((Get-ClientProcess $p.Client).Count -gt 0) {
+            $r = Show-Message "UO Smallz is still running. Close the game, then press Retry.`n`nCancel plays without the HD art." "RetryCancel" "Warning"
+            if ($r -ne "Retry") { Write-LaunchLog $root "HD art: client running, player cancelled"; return }
+        }
+
+        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("uosmallz-hdart-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+        $zip = Join-Path $tmp $info.File
+        $busy = $null
+        try {
+            $busy = Show-Busy "Downloading the HD art ($mb MB)..."
+            Save-UrlWithTimeout $info.Url $zip 30 60 14400
+            if ($busy) { $busy.Close(); $busy = $null }
+            $busy = Show-Busy "Unpacking the HD art..."
+            Install-HdArt $root $zip $info.Sha256
+            Write-LaunchLog $root "HD art installed ($($info.Sha256))"
+        } catch {
+            Write-LaunchLog $root "HD art failed, nothing changed: $($_.Exception.Message)"
+            try { Show-Message "The HD art could not be installed, so the game runs with the art it had.`n`n$($_.Exception.Message)" "OK" "Warning" | Out-Null } catch { }
+        } finally {
+            if ($busy) { try { $busy.Close() } catch { } }
+            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-LaunchLog $root "HD art error: $($_.Exception.Message)"
+    }
+}
+
 # ---- UI ------------------------------------------------------------------
 
 function Show-UpdateDialog($info, $local) {
@@ -678,6 +812,7 @@ if (-not $NoMain) {
     try { [void](Repair-ClientFolder $InstallRoot) } catch { Write-LaunchLog $InstallRoot "recovery failed: $($_.Exception.Message)" }
     try { [void](Confirm-PendingUpdate $InstallRoot) } catch { Write-LaunchLog $InstallRoot "cleanup failed: $($_.Exception.Message)" }
     try { Invoke-Launcher $InstallRoot } catch { }
+    try { Invoke-HdArt $InstallRoot } catch { }
     $proc = Start-Client $InstallRoot
     try { Watch-PendingLaunch $InstallRoot $proc } catch { Write-LaunchLog $InstallRoot "launch watch failed: $($_.Exception.Message)" }
 }
