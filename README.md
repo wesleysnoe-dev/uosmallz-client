@@ -25,6 +25,15 @@ UPDATES (Windows)
   itself up to date, so you never need a new installer after installing.
   Running install.bat again is also safe: it keeps your settings.json.
 
+WORLD MAP
+  Since v8 the world map (World Map on the top bar) marks every
+  town, bank, shop, healer, inn, stable, moongate, shrine, dungeon entrance
+  and faction stronghold, each with its own icon; shops carry the name on
+  their sign. Towns, moongates and dungeons show at every zoom, banks and
+  inns from 1x, other shops from 1.5x, names from 2x or on hover. They live
+  in MapMarkers and MapIcons beside TazUO.exe and come with client updates;
+  your own markers (in Data\Client) are kept.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
@@ -90,5 +99,5 @@ MANUAL SETUP (no installer)
 ## License
   The client is TazUO (https://github.com/PlayTazUO/TazUO), a ClassicUO fork,
   BSD 2-Clause, with small UO Smallz changes (chat window, Groups button,
-  HD art and creatures drawn at the art's own size).
+  HD art and creatures drawn at the art's own size, places on the world map).
   See the notices folder: license, notice, and the full change patch.

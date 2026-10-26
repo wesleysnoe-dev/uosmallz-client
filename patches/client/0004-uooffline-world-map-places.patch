@@ -1,0 +1,26 @@
+diff --git a/src/ClassicUO.Client/Game/UI/Gumps/WorldMapGump.cs b/src/ClassicUO.Client/Game/UI/Gumps/WorldMapGump.cs
+index d7934b2..44da5b9 100644
+--- a/src/ClassicUO.Client/Game/UI/Gumps/WorldMapGump.cs
++++ b/src/ClassicUO.Client/Game/UI/Gumps/WorldMapGump.cs
+@@ -51,8 +51,10 @@ public class WorldMapGump : ResizableGump
+ {
+     public const string USER_MARKERS_FILE = "userMarkers";
+ 
+-    private static readonly string[] _mapFilesPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client"), Path.Combine(Settings.GlobalSettings.UltimaOnlineDirectory, "MapMarkers"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapMarkers")];
+-    private static readonly string[] _mapIconsPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapIcons"), Path.Combine(Settings.GlobalSettings.UltimaOnlineDirectory, "MapIcons"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapIcons")];
++    // UO Offline: the shard's own places (MapMarkers/places.csv) and their icons ship beside TazUO.exe, where a
++    // client update replaces them; the player's own markers stay in Data/Client. A player's icon of the same name wins.
++    private static readonly string[] _mapFilesPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client"), Path.Combine(Settings.GlobalSettings.UltimaOnlineDirectory, "MapMarkers"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapMarkers"), Path.Combine(CUOEnviroment.ExecutablePath, "MapMarkers")];
++    private static readonly string[] _mapIconsPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapIcons"), Path.Combine(Settings.GlobalSettings.UltimaOnlineDirectory, "MapIcons"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapIcons"), Path.Combine(CUOEnviroment.ExecutablePath, "MapIcons")];
+ 
+     private static readonly string _mapsCachePath = Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapsCache");
+     private static readonly string UserMarkersFilePath = Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", $"{USER_MARKERS_FILE}.usr");
+@@ -2060,7 +2062,7 @@ public class WorldMapGump : ResizableGump
+ 
+                                     if (string.IsNullOrEmpty(line))
+                                     {
+-                                        return;
++                                        continue; // UO Offline: an empty line skipped, not the end of every marker file still to load
+                                     }
+ 
+                                     string[] splits = line.Split(',');

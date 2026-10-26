@@ -25,6 +25,7 @@ on:
     branches: [main]
     paths:
       - "patches/**"
+      - "client-files/**"
       - "CLIENT_VERSION"
       - ".github/workflows/build-client.yml"
 
@@ -136,6 +137,9 @@ jobs:
           # the launcher rides along: update-check.ps1 copies these over itself after an update
           mkdir -p cuo/dist/launcher
           cp smallz/installer/update-check.ps1 smallz/installer/launch.vbs cuo/dist/launcher/
+          # the world map's places and icons, beside TazUO.exe where patch 0004 has the
+          # world map look for them (made by uo-offline-dev's tools/map-markers)
+          cp -r smallz/client-files/. cuo/dist/
 
       # Every file of the zip with its size and SHA-256: the launcher compares it
       # with the installed client and fetches only what changed (update-check.ps1,
