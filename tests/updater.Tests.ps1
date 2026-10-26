@@ -389,7 +389,7 @@ Remove-Item $root -Recurse -Force
 # ---- HD art ----
 $good = "a" * 64
 $info = Get-HdArtInfo ([pscustomobject]@{ file = "UOSmallz-HDArt-2x.zip"; size = 551811205; sha256 = $good.ToUpper() })
-Check ($info -and $info.Url -eq "${HdArtBaseUrl}UOSmallz-HDArt-2x.zip" -and $info.Sha256 -eq $good -and $info.Size -eq 551811205) "hd art: manifest read, URL from the allowlisted server only"
+Check ($info -and $info.Url -eq "${HdArtLegacyUrl}UOSmallz-HDArt-2x.zip" -and $info.Sha256 -eq $good -and $info.Size -eq 551811205) "hd art: manifest read, URL from the allowlisted server only"
 Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "../evil.zip"; size = 1; sha256 = $good }))) "hd art: a path in the file name is refused"
 Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "pack.exe"; size = 1; sha256 = $good }))) "hd art: only a .zip is accepted"
 Check ($null -eq (Get-HdArtInfo ([pscustomobject]@{ file = "pack.zip"; size = 1; sha256 = "abc" }))) "hd art: a malformed SHA-256 is refused"
@@ -550,7 +550,7 @@ $m = [pscustomobject]@{ creatures = [pscustomobject]@{ files = @(
     [pscustomobject]@{ file = "UOSmallz-HDAnim-1.uoanim"; size = 10; sha256 = $good },
     [pscustomobject]@{ file = "UOSmallz-HDAnim-2.uoanim"; size = 20; sha256 = ("b" * 64).ToUpper() }) } }
 $ci = Get-HdCreaturesInfo $m
-Check ($ci -and $ci.Files.Count -eq 2 -and $ci.Size -eq 30 -and $ci.Files[1].Url -eq "${HdArtBaseUrl}UOSmallz-HDAnim-2.uoanim" -and $ci.Files[1].Sha256 -eq ("b" * 64) -and $ci.Id -match '^[0-9a-f]{64}$') "hd creatures: manifest read, URLs from the allowlisted server only"
+Check ($ci -and $ci.Files.Count -eq 2 -and $ci.Size -eq 30 -and $ci.Files[1].Url -eq "${HdArtLegacyUrl}UOSmallz-HDAnim-2.uoanim" -and $ci.Files[1].Sha256 -eq ("b" * 64) -and $ci.Id -match '^[0-9a-f]{64}$') "hd creatures: manifest read, URLs from the allowlisted server only"
 Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ file = "x.zip"; size = 1; sha256 = $good }))) "hd creatures: a manifest without them offers nothing"
 Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @([pscustomobject]@{ file = "..\a.uoanim"; size = 1; sha256 = $good }) } }))) "hd creatures: a path in a file name is refused"
 Check ($null -eq (Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @([pscustomobject]@{ file = "a.exe"; size = 1; sha256 = $good }) } }))) "hd creatures: only .uoanim is accepted"
@@ -566,8 +566,8 @@ Check (Test-ClientDrawsHdCreatures (Join-Path $root "Client")) "hd creatures: a 
 $srv = Join-Path $root "server"
 function New-ServedFile([string]$name, [string]$text) { Set-File (Join-Path $srv $name) $text; $f = Join-Path $srv $name; return [pscustomobject]@{ file = $name; size = (Get-Item $f).Length; sha256 = (Get-Sha256 $f) } }
 $script:fetched = @()
-function Save-UrlWithTimeout([string]$url, [string]$out) {
-    $name = $url.Substring($HdArtBaseUrl.Length)
+function Save-UrlWithTimeout([string]$url, [string]$out, $c1, $c2, $c3, [switch]$Resume) {
+    $name = $url.Substring($HdArtLegacyUrl.Length)
     $script:fetched += $name
     if (-not (Test-Path -LiteralPath (Join-Path $srv $name))) { throw "404 $name" }
     Copy-Item -LiteralPath (Join-Path $srv $name) -Destination $out
@@ -591,7 +591,7 @@ Set-File (Join-Path $srv "C-3.uoanim") "tampered"
 $e4 = New-ServedFile "C-4.uoanim" "part four"
 $set3 = Get-HdCreaturesInfo ([pscustomobject]@{ creatures = [pscustomobject]@{ files = @($e1, $e4, $bad) } })
 $threw = $false; try { Install-HdCreatures $root $set3 } catch { $threw = $true }
-Check ($threw -and (Read-F (Join-Path $root "HDArt\anim\C-4.uoanim")) -eq "part four" -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-3.uoanim")) -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-3.uoanim.part"))) "hd creatures: a part that doesn't match is refused; the good ones are kept"
+Check ($threw -and (Read-F (Join-Path $root "HDArt\anim\C-4.uoanim")) -eq "part four" -and -not (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-3.uoanim")) -and -not (Get-ChildItem -LiteralPath (Join-Path $root "HDArt\anim") -Filter "C-3.uoanim*.part")) "hd creatures: a part that doesn't match is refused; the good ones are kept"
 Check ((Read-HdArtStamp (Join-Path $root "hdanim-version.json")) -eq $set2.Id -and (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-2b.uoanim"))) "hd creatures: after a failure the stamp and the old parts stay, so it is offered again"
 Remove-Item $root -Recurse -Force
 

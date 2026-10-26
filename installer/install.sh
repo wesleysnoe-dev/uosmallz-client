@@ -7,13 +7,16 @@ HOST=uosmallz.duckdns.org; PORT=2593; VER=7.0.23.1
 # The latest client, checked against its release's SHA256SUMS.txt (as install.ps1 does on Windows).
 CLIENT_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/download/UOSmallz-Client-linux-x64.zip
 SUMS_URL=https://github.com/wesleysnoe-dev/uosmallz-client/releases/latest/download/SHA256SUMS.txt
-# HD art (tools/hd-art in uo-offline-dev): ~0.5 GB from the UO Smallz server itself into $ROOT/HDArt
-# (the client reads it from beside its folder), checked against hd-art.json in this repo. Fetched
+# HD art (tools/hd-art in uo-offline-dev): ~0.6 GB from this repo's GitHub release (the tag is
+# hd-art.json's "release", hd-art-N) into $ROOT/HDArt (the client reads it from beside its folder),
+# checked against hd-art.json (SHA-256). A manifest without "release" still means the old shard
+# server (port 2595), for the move only. Fetched
 # again only when hd-art.json names a new pack. INSTALL_HD_ART=0 to skip. The HD creatures (several
 # .uoanim files of about 1 GB, listed in hd-art.json under "creatures") go to $ROOT/HDArt/anim the
 # same way; INSTALL_HD_CREATURES=0 to skip them.
 HD_ART_MANIFEST=https://raw.githubusercontent.com/wesleysnoe-dev/uosmallz-client/main/hd-art.json
-HD_ART_BASE=http://uosmallz.duckdns.org:2595/
+HD_ART_RELEASES=https://github.com/wesleysnoe-dev/uosmallz-client/releases/download/
+HD_ART_LEGACY=http://uosmallz.duckdns.org:2595/
 # Same mirror, file and hash as the UO Offline installer.
 DATA_URL=https://mirror.ashkantra.de/fullclients/7.0.23.1.exe
 DATA_SHA=23b0548252bb4e6f39afbddac2e64f8deb862fbfaccb1303b87895d295e01839
@@ -205,12 +208,23 @@ ok "Wrote $ROOT/Client/settings.json"
 
 # HD art: only for a client that draws it at the art's own size (patches/client/0003); an older one
 # would draw every item twice as big. Every problem is a warning: the game runs without it.
+# hd-art.json (on stdin) -> where its files are: "release": "hd-art-N" -> that release of this repo;
+# none -> the old shard server; anything else -> nothing (exit 1). Never a URL from the file.
+hd_art_base() {
+  local rel
+  rel="$(python3 -c 'import json,sys; j=json.load(sys.stdin); print(j["release"] if "release" in j else "-")' 2>/dev/null)" || return 1
+  if [[ "$rel" == "-" ]]; then printf '%s' "$HD_ART_LEGACY"; return 0; fi
+  [[ "$rel" =~ ^hd-art-[0-9]{1,6}$ ]] || return 1
+  printf '%s%s/' "$HD_ART_RELEASES" "$rel"
+}
+
 install_hd_art() {
   banner "HD art"
   [[ "${INSTALL_HD_ART:-1}" == "1" ]] || { say "Skipped (INSTALL_HD_ART=0)."; return 0; }
   grep -aq ScaledTexture2D "$ROOT/Client/ClassicUO.Renderer.dll" 2>/dev/null || { warn "This client can't draw HD art yet; skipped."; return 0; }
-  local m info file size sha have="" zip="$ROOT/hdart.zip"
-  m="$(curl -fsSL -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD art skipped."; return 0; }
+  local m info file size sha base have="" zip f
+  m="$(curl -fsSL --proto =https --tlsv1.2 -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD art skipped."; return 0; }
+  base="$(printf '%s' "$m" | hd_art_base)" || { warn "hd-art.json is not valid; HD art skipped."; return 0; }
   info="$(printf '%s' "$m" | python3 -c 'import json,sys; j=json.load(sys.stdin); print(j["file"], int(j["size"]), str(j["sha256"]).lower())' 2>/dev/null)" || info=""
   read -r file size sha <<< "${info:-x 0 x}"
   if [[ ! "$file" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$ || ! "$sha" =~ ^[0-9a-f]{64}$ || "$size" -le 0 ]]; then
@@ -218,9 +232,13 @@ install_hd_art() {
   fi
   [[ -f "$ROOT/hdart-version.json" ]] && have="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$ROOT/hdart-version.json" 2>/dev/null || true)"
   [[ "$have" == "$sha" ]] && { ok "HD art up to date."; return 0; }
-  say "Downloading the HD art ($(( size / 1048576 )) MB from the UO Smallz server)..."
+  # named for the pack it is meant to be, so a new hd-art.json never carries on an old one
+  zip="$ROOT/hdart-${sha:0:12}.zip.part"
+  rm -f "$ROOT/hdart.zip"
+  for f in "$ROOT"/hdart-*.zip.part; do if [[ -f "$f" && "$f" != "$zip" ]]; then rm -f "$f"; fi; done
+  say "Downloading the HD art ($(( size / 1048576 )) MB from GitHub)..."
   # -C -: an earlier run that broke off carries on where it stopped
-  curl -fL -C - --progress-bar -A "$UA" -o "$zip" "${HD_ART_BASE}${file}" || { warn "HD art download failed; run install.sh again to carry on."; return 0; }
+  curl -fL -C - --tlsv1.2 --connect-timeout 30 --speed-limit 1 --speed-time 60 --progress-bar -A "$UA" -o "$zip" "${base}${file}" || { warn "HD art download failed; run install.sh again to carry on."; return 0; }
   echo "$sha  $zip" | sha256sum -c --quiet - || { rm -f "$zip"; warn "The HD art download didn't match hd-art.json; deleted."; return 0; }
   rm -rf "$ROOT/HDArt.new" "$ROOT/HDArt.old"
   unzip -q "$zip" -d "$ROOT/HDArt.new" && [[ -d "$ROOT/HDArt.new/art" ]] || { rm -rf "$ROOT/HDArt.new"; warn "Could not unpack the HD art; the art you had stays."; return 0; }
@@ -240,8 +258,9 @@ install_hd_creatures() {
   banner "HD creatures"
   [[ "${INSTALL_HD_CREATURES:-1}" == "1" ]] || { say "Skipped (INSTALL_HD_CREATURES=0)."; return 0; }
   grep -aq HdAnimations "$ROOT/Client/ClassicUO.Assets.dll" 2>/dev/null || { warn "This client can't draw HD creatures yet; skipped."; return 0; }
-  local m list file size sha dir="$ROOT/HDArt/anim" total=0 n=0 i=0 keep=" "
-  m="$(curl -fsSL -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD creatures skipped."; return 0; }
+  local m list file size sha base dir="$ROOT/HDArt/anim" total=0 n=0 i=0 keep=" "
+  m="$(curl -fsSL --proto =https --tlsv1.2 -A "$UA" --max-time 20 "$HD_ART_MANIFEST" 2>/dev/null)" || { warn "hd-art.json not reachable; HD creatures skipped."; return 0; }
+  base="$(printf '%s' "$m" | hd_art_base)" || { warn "hd-art.json is not valid; HD creatures skipped."; return 0; }
   list="$(printf '%s' "$m" | python3 -c 'import json,sys
 for f in json.load(sys.stdin).get("creatures", {}).get("files", []): print(f["file"], int(f["size"]), str(f["sha256"]).lower())' 2>/dev/null)" || list=""
   [[ -n "$list" ]] || { say "No HD creatures listed yet."; return 0; }
@@ -252,16 +271,16 @@ for f in json.load(sys.stdin).get("creatures", {}).get("files", []): print(f["fi
     total=$(( total + size )); n=$(( n + 1 ))
   done <<< "$list"
   mkdir -p "$dir"
-  say "$n parts, $(( total / 1048576 )) MB in all from the UO Smallz server."
+  say "$n parts, $(( total / 1048576 )) MB in all from GitHub."
   while read -r file size sha; do
     i=$(( i + 1 )); keep="$keep$file "
     if [[ -f "$dir/$file" && "$(stat -c %s "$dir/$file")" == "$size" ]] && echo "$sha  $dir/$file" | sha256sum -c --quiet - 2>/dev/null; then
       say "Part $i of $n: up to date."; continue
     fi
     say "Part $i of $n: $(( size / 1048576 )) MB..."
-    curl -fL -C - --progress-bar -A "$UA" -o "$dir/$file.part" "${HD_ART_BASE}${file}" || { warn "HD creatures download failed; run install.sh again to carry on."; return 0; }
-    echo "$sha  $dir/$file.part" | sha256sum -c --quiet - || { rm -f "$dir/$file.part"; warn "Part $i didn't match hd-art.json; deleted. Run install.sh again."; return 0; }
-    mv -f "$dir/$file.part" "$dir/$file"
+    curl -fL -C - --tlsv1.2 --connect-timeout 30 --speed-limit 1 --speed-time 60 --progress-bar -A "$UA" -o "$dir/$file.${sha:0:12}.part" "${base}${file}" || { warn "HD creatures download failed; run install.sh again to carry on."; return 0; }
+    echo "$sha  $dir/$file.${sha:0:12}.part" | sha256sum -c --quiet - || { rm -f "$dir/$file.${sha:0:12}.part"; warn "Part $i didn't match hd-art.json; deleted. Run install.sh again."; return 0; }
+    mv -f "$dir/$file.${sha:0:12}.part" "$dir/$file"
   done <<< "$list"
   # parts an older set had
   for f in "$dir"/*; do if [[ -f "$f" && "$keep" != *" $(basename "$f") "* ]]; then rm -f "$f"; fi; done

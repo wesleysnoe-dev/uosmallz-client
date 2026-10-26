@@ -20,8 +20,9 @@
 #   - The launcher updates itself: a higher $LauncherVersion on main replaces
 #     this script and launch.vbs, and runs in its place.
 #   - HD art: once the client can draw it, offer the pack (Yes / No / Cancel =
-#     don't ask again) from the UO Smallz server into HDArt beside Client,
-#     checked against hd-art.json; again only when hd-art.json names a new one.
+#     don't ask again) from the GitHub release hd-art.json names into HDArt
+#     beside Client, checked against hd-art.json (SHA-256); again only when
+#     hd-art.json names a new one. A broken-off download resumes next time.
 #   - HD creatures: the same for the animation packs (creatures, people and
 #     clothes, several files of about 1 GB) into HDArt\anim, asked separately.
 #
@@ -54,18 +55,22 @@ $AssetName  = "UOSmallz-Client-win-x64.zip"
 $SumsName   = "SHA256SUMS.txt"
 $TimeoutSec = 6
 
-# HD art (tools/hd-art in uo-offline-dev): about 0.5 GB, served by the UO Smallz
-# shard machine itself (hd-art serve), not by GitHub. What to expect (file
-# name, size, SHA-256) comes from hd-art.json in this repo over HTTPS, so a
-# download that does not match it is thrown away.
+# HD art (tools/hd-art in uo-offline-dev): the 2x pack (about 0.6 GB) and the
+# creature packs (several files of about 1 GB), release assets of this public
+# repo. What to expect (file name, size, SHA-256, and the release tag that
+# holds them) comes from hd-art.json in this repo over HTTPS, so a download
+# that does not match it is thrown away. The URL is always built here from
+# $Repo and a tag of the form hd-art-N, never read from a file. A manifest
+# without "release" still names the old shard server (hd-art serve, port
+# 2595) until every launcher has moved on.
 $HdArtManifestUrl = "https://raw.githubusercontent.com/$Repo/main/hd-art.json"
-$HdArtBaseUrl     = "http://uosmallz.duckdns.org:2595/"   # allowlist: never read from a file
+$HdArtLegacyUrl   = "http://uosmallz.duckdns.org:2595/"   # allowlist: never read from a file
 
 # This launcher's version. It updates itself from this repo (Update-LauncherSelf)
 # when installer/update-check.ps1 on main carries a higher number, so bump it
 # with every change to this file or launch.vbs (the installer workflow refuses
 # a change that does not).
-$LauncherVersion = 7
+$LauncherVersion = 8
 
 # Each release also lists every file of the client zip with its size and
 # SHA-256 (the build writes it); an update then fetches only what changed.
@@ -87,6 +92,7 @@ function Get-Paths([string]$root) {
         HdArtOld   = Join-Path $root "HDArt.old"
         HdArtStamp = Join-Path $root "hdart-version.json"
         HdArtSkip  = Join-Path $root "hdart-skipped.txt"
+        HdArtDl    = Join-Path $root "HDArt.download"
         HdAnim      = Join-Path (Join-Path $root "HDArt") "anim"
         HdAnimStamp = Join-Path $root "hdanim-version.json"
         HdAnimSkip  = Join-Path $root "hdanim-skipped.txt"
@@ -225,18 +231,38 @@ function Get-LatestRelease {
 
 # Download $url to $out with real timeouts: $ConnectSec to get a response,
 # $StallSec without a single byte arriving, $TotalSec overall. On any
-# failure the partial file is deleted and the error is thrown.
-function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, [int]$StallSec = 30, [int]$TotalSec = 1800) {
+# failure the partial file is deleted and the error is thrown. -Resume: a
+# partial $out is kept on failure, and the next call asks for the rest
+# (Range); a server that answers with the whole file starts it over.
+function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, [int]$StallSec = 30, [int]$TotalSec = 1800, [switch]$Resume) {
     $resp = $null; $in = $null; $fs = $null
     try {
+        $have = 0L
+        if ($Resume -and (Test-Path -LiteralPath $out)) { $have = (Get-Item -LiteralPath $out).Length }
         $req = [Net.HttpWebRequest]::Create($url)
         $req.UserAgent = "UOSmallz-launcher"
         $req.AllowAutoRedirect = $true
         $req.Timeout = $ConnectSec * 1000
         $req.ReadWriteTimeout = $StallSec * 1000
-        $resp = $req.GetResponse()
+        if ($have -gt 0) { $req.AddRange([long]$have) }
+        try {
+            $resp = $req.GetResponse()
+        } catch {
+            # 416: what is there is already the whole file (or more); the
+            # checksum decides.
+            $ex = $_.Exception
+            while ($ex -and -not ($ex -is [Net.WebException])) { $ex = $ex.InnerException }
+            $r = $null
+            if ($ex) { $r = $ex.Response }
+            if ($have -gt 0 -and $r -and [int]$r.StatusCode -eq 416) { $r.Dispose(); return }
+            throw
+        }
         $in = $resp.GetResponseStream()
-        $fs = [IO.File]::Create($out)
+        if ($have -gt 0 -and [int]$resp.StatusCode -eq 206) {
+            $fs = New-Object IO.FileStream($out, [IO.FileMode]::Append, [IO.FileAccess]::Write)
+        } else {
+            $fs = [IO.File]::Create($out)
+        }
         $buf = New-Object byte[] 65536
         $sw = [Diagnostics.Stopwatch]::StartNew()
         while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
@@ -246,7 +272,7 @@ function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, 
     } catch {
         $err = $_
         if ($fs) { try { $fs.Dispose() } catch { }; $fs = $null }
-        Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+        if (-not $Resume) { Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue }
         throw $err
     } finally {
         if ($fs) { $fs.Dispose() }
@@ -855,16 +881,34 @@ function Test-ClientDrawsHdArt([string]$clientDir) {
     return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dll)).Contains("ScaledTexture2D")
 }
 
-# hd-art.json { "file", "size", "sha256" } -> what to download, or $null when
-# it is missing or not what it should be.
+# Where the files hd-art.json lists come from: "release": "hd-art-N" -> that
+# release of $Repo; no "release" -> the old shard server; anything else ->
+# $null (nothing is offered).
+function Get-HdArtBaseUrl($manifest) {
+    if ($null -eq $manifest) { return $null }
+    $rel = $null
+    if ($manifest.PSObject.Properties.Name -contains "release") { $rel = [string]$manifest.release }
+    if ($null -eq $rel) { return $HdArtLegacyUrl }
+    if ($rel -cmatch '^hd-art-[0-9]{1,6}$') { return "https://github.com/$Repo/releases/download/$rel/" }
+    return $null
+}
+
+# A partial download's name carries the SHA-256 it is meant to have, so a
+# change in hd-art.json never resumes into the old file.
+function Get-HdPartPath([string]$dest, [string]$sha) { return "$dest.$($sha.Substring(0, 12)).part" }
+
+# hd-art.json { "release", "file", "size", "sha256" } -> what to download, or
+# $null when it is missing or not what it should be.
 function Get-HdArtInfo($manifest) {
     if ($null -eq $manifest) { return $null }
     $file = [string]$manifest.file
     $sha = ([string]$manifest.sha256).ToLower()
     $size = 0L
     try { $size = [long]$manifest.size } catch { return $null }
+    $base = Get-HdArtBaseUrl $manifest
+    if ($null -eq $base) { return $null }
     if ($file -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$' -or $sha -notmatch '^[0-9a-f]{64}$' -or $size -le 0) { return $null }
-    return @{ File = $file; Url = $HdArtBaseUrl + $file; Size = $size; Sha256 = $sha }
+    return @{ File = $file; Url = $base + $file; Size = $size; Sha256 = $sha }
 }
 
 function Read-HdArtStamp([string]$path) {
@@ -931,6 +975,8 @@ function Test-ClientDrawsHdCreatures([string]$clientDir) {
 # what it should be.
 function Get-HdCreaturesInfo($manifest) {
     if ($null -eq $manifest -or $null -eq $manifest.creatures) { return $null }
+    $base = Get-HdArtBaseUrl $manifest
+    if ($null -eq $base) { return $null }
     $files = @()
     foreach ($f in @($manifest.creatures.files)) {
         if ($null -eq $f) { continue }
@@ -939,7 +985,7 @@ function Get-HdCreaturesInfo($manifest) {
         $size = 0L
         try { $size = [long]$f.size } catch { return $null }
         if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.uoanim$' -or $sha -notmatch '^[0-9a-f]{64}$' -or $size -le 0) { return $null }
-        $files += , @{ File = $name; Url = $HdArtBaseUrl + $name; Size = $size; Sha256 = $sha }
+        $files += , @{ File = $name; Url = $base + $name; Size = $size; Sha256 = $sha }
     }
     if ($files.Count -eq 0) { return $null }
     $total = 0L
@@ -963,8 +1009,9 @@ function Install-HdCreatures([string]$root, $info, [scriptblock]$onFile = $null)
         $dest = Join-Path $p.HdAnim $f.File
         if ((Test-Path -LiteralPath $dest) -and (Get-Item -LiteralPath $dest).Length -eq $f.Size -and (Test-Sha256 $dest $f.Sha256)) { continue }
         if ($onFile) { & $onFile ($i + 1) $info.Files.Count $f }
-        $part = "$dest.part"
-        Save-UrlWithTimeout $f.Url $part 30 60 14400
+        $part = Get-HdPartPath $dest $f.Sha256
+        Save-UrlWithTimeout $f.Url $part 30 60 14400 -Resume
+        if ((Get-Item -LiteralPath $part).Length -lt $f.Size) { throw "$($f.File) broke off; the rest is fetched next time" }
         if (-not (Test-Sha256 $part $f.Sha256)) {
             Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
             throw "$($f.File) does not match hd-art.json (SHA-256)"
@@ -988,7 +1035,7 @@ function Invoke-HdCreatures([string]$root, $manifest) {
     $what = "HD creatures for UO Smallz are available"
     if (Test-Path -LiteralPath $p.HdAnimStamp) { $what = "Updated HD creatures for UO Smallz are available" }
     $a = Show-Message ("${what}: sharper monsters, animals, people and the clothes they wear, drawn at their normal size. " +
-        "It is a $gb GB download from the UO Smallz server, in $($info.Files.Count) parts; a part that breaks off is fetched again next time.`n`n" +
+        "It is a $gb GB download from GitHub, in $($info.Files.Count) parts; a part that breaks off is fetched again next time.`n`n" +
         "Yes = download it now (the game starts afterwards)`nNo = not now (you are asked again next time)`n" +
         "Cancel = don't ask again for this version") "YesNoCancel" "Question"
     Write-LaunchLog $root "HD creatures $($info.Id.Substring(0, 12)) offered: $a"
@@ -1040,6 +1087,23 @@ function Invoke-HdArt([string]$root) {
     }
 }
 
+# The pack into HDArt.download beside Client, resuming a part left from an
+# earlier try; parts of any other pack go. Returns the checked zip; a
+# download that does not match hd-art.json is deleted and thrown.
+function Save-HdArtPack([string]$root, $info) {
+    $p = Get-Paths $root
+    New-Item -ItemType Directory -Path $p.HdArtDl -Force | Out-Null
+    $part = Get-HdPartPath (Join-Path $p.HdArtDl $info.File) $info.Sha256
+    Get-ChildItem -LiteralPath $p.HdArtDl -File | Where-Object { $_.FullName -ne $part } | Remove-Item -Force
+    Save-UrlWithTimeout $info.Url $part 30 60 14400 -Resume
+    if ((Get-Item -LiteralPath $part).Length -lt $info.Size) { throw "the download broke off; the rest is fetched next time" }
+    if (-not (Test-Sha256 $part $info.Sha256)) {
+        Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+        throw "the download does not match hd-art.json (SHA-256)"
+    }
+    return $part
+}
+
 function Invoke-HdArtPack([string]$root, $info) {
     $p = Get-Paths $root
     try {
@@ -1051,7 +1115,7 @@ function Invoke-HdArtPack([string]$root, $info) {
         $what = "HD art for UO Smallz is available"
         if (Test-Path -LiteralPath $p.HdArt) { $what = "Updated HD art for UO Smallz is available" }
         $a = Show-Message ("${what}: sharper items, buildings, windows and ground, drawn at their normal size " +
-            "(the difference shows most when you zoom in). It is a $mb MB download from the UO Smallz server.`n`n" +
+            "(the difference shows most when you zoom in). It is a $mb MB download from GitHub.`n`n" +
             "Yes = download it now (the game starts afterwards)`nNo = not now (you are asked again next time)`n" +
             "Cancel = don't ask again for this version") "YesNoCancel" "Question"
         Write-LaunchLog $root "HD art $($info.Sha256.Substring(0, 12)) offered: $a"
@@ -1063,23 +1127,23 @@ function Invoke-HdArtPack([string]$root, $info) {
             if ($r -ne "Retry") { Write-LaunchLog $root "HD art: client running, player cancelled"; return }
         }
 
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("uosmallz-hdart-" + [Guid]::NewGuid().ToString("N"))
-        New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-        $zip = Join-Path $tmp $info.File
         $busy = $null
+        $done = $false
         try {
             $busy = Show-Busy "Downloading the HD art ($mb MB)..."
-            Save-UrlWithTimeout $info.Url $zip 30 60 14400
+            $zip = Save-HdArtPack $root $info
             if ($busy) { $busy.Close(); $busy = $null }
             $busy = Show-Busy "Unpacking the HD art..."
             Install-HdArt $root $zip $info.Sha256
+            $done = $true
             Write-LaunchLog $root "HD art installed ($($info.Sha256))"
         } catch {
             Write-LaunchLog $root "HD art failed, nothing changed: $($_.Exception.Message)"
             try { Show-Message "The HD art could not be installed, so the game runs with the art it had.`n`n$($_.Exception.Message)" "OK" "Warning" | Out-Null } catch { }
         } finally {
             if ($busy) { try { $busy.Close() } catch { } }
-            Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+            # a pack that is in goes; a broken-off one stays to resume
+            if ($done) { Remove-Item -LiteralPath (Get-Paths $root).HdArtDl -Recurse -Force -ErrorAction SilentlyContinue }
         }
     } catch {
         Write-LaunchLog $root "HD art error: $($_.Exception.Message)"

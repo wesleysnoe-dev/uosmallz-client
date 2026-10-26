@@ -50,8 +50,9 @@ HD ART
   wear are HD too (every frame of every animation).
   The launcher offers them once a client that draws them is installed: the
   art (~640 MB) and then the creatures (~4.7 GB, five files, so a broken
-  download only redoes one), from the UO Smallz server (uosmallz.duckdns.org
-  port 2595), checked against hd-art.json in this repo, into an HDArt folder
+  download only redoes one), from this repo's GitHub release (hd-art-N, named
+  in hd-art.json; a download that breaks off carries on next time), checked
+  against hd-art.json (SHA-256), into an HDArt folder
   beside Client (creatures in HDArt\anim). Yes downloads now, No asks again
   next time, Cancel never asks for that pack again. Client updates don't
   touch them. To go back to the original art, delete the HDArt folder (or
