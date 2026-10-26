@@ -34,6 +34,14 @@ WORLD MAP
   in MapMarkers and MapIcons beside TazUO.exe and come with client updates;
   your own markers (in Data\Client) are kept.
 
+ITEM ICONS
+  Since v9 the client carries a small (56x56) icon of every large item in
+  ExternalImages\gumps (gump ids 0x8000-0xB6CA, made from the HD art by
+  uo-offline-dev's tools/item-icons). The shard's gumps (auction house,
+  veteran rewards, storage, stables, GM panel) show these instead of the full
+  art when it would not fit its row. They come with client updates, beside
+  TazUO.exe and outside Data\. item-icons.csv maps item id -> gump id.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
