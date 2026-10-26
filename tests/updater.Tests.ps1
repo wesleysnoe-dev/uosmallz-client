@@ -595,6 +595,21 @@ Check ($threw -and (Read-F (Join-Path $root "HDArt\anim\C-4.uoanim")) -eq "part 
 Check ((Read-HdArtStamp (Join-Path $root "hdanim-version.json")) -eq $set2.Id -and (Test-Path -LiteralPath (Join-Path $root "HDArt\anim\C-2b.uoanim"))) "hd creatures: after a failure the stamp and the old parts stay, so it is offered again"
 Remove-Item $root -Recurse -Force
 
+# ---- changed files vs the full zip: count and estimated time ----
+Check ($null -eq (Get-DeltaRefusal 12 5MB 133MB)) "delta: a few changed files -> changed-files update"
+Check ($null -eq (Get-DeltaRefusal 2000 1MB 0)) "delta: 2000 files is still allowed before the zip size is known"
+Check ((Get-DeltaRefusal 2001 1MB 0) -match "2001 files changed") "delta: more than 2000 files -> the full zip"
+Check ((Get-DeltaRefusal 14027 60MB 133MB) -match "14027") "delta: v9's 14,027 icons -> the full zip"
+$r = Get-DeltaRefusal 1500 120MB 133MB
+Check ($r -match "one by one") "delta: under the count but slower than the zip by estimate -> the full zip ($r)"
+Check ($null -eq (Get-DeltaRefusal 300 1MB 133MB)) "delta: 300 small files (~21 s) beat a 133 MB zip (~33 s at 4 MB/s)"
+Check ($null -ne (Get-DeltaRefusal 600 1MB 133MB)) "delta: 600 small files (~42 s) do not"
+[Environment]::SetEnvironmentVariable("UOSMALLZ_DELTA_MAX_FILES", "10")
+Check ((Get-DeltaRefusal 11 1KB 0) -match "more than 10") "delta: UOSMALLZ_DELTA_MAX_FILES overrides the count"
+[Environment]::SetEnvironmentVariable("UOSMALLZ_DELTA_MAX_FILES", "x")
+Check ($null -eq (Get-DeltaRefusal 11 1KB 0)) "delta: a bad override is ignored"
+[Environment]::SetEnvironmentVariable("UOSMALLZ_DELTA_MAX_FILES", $null)
+
 Write-Host ""
 Write-Host "$script:pass passed, $script:fail failed"
 exit $script:fail

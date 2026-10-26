@@ -70,7 +70,7 @@ $HdArtLegacyUrl   = "http://uosmallz.duckdns.org:2595/"   # allowlist: never rea
 # when installer/update-check.ps1 on main carries a higher number, so bump it
 # with every change to this file or launch.vbs (the installer workflow refuses
 # a change that does not).
-$LauncherVersion = 8
+$LauncherVersion = 9
 
 # Each release also lists every file of the client zip with its size and
 # SHA-256 (the build writes it); an update then fetches only what changed.
@@ -564,6 +564,17 @@ function Complete-ClientUpdate([string]$root, [string]$expectedSha, [string]$tag
 # the launcher downloads the full zip as before.
 
 $DeltaMaxShare = 0.6   # more than this share of the client changed: the full zip
+# Each changed file is its own small request (local file header, then the
+# data): v9's 14,027 icons took about 15 minutes at roughly 15 files/s, where
+# the whole 133 MB zip takes a minute or two. So the changed-files update is
+# also skipped when it would take longer than the full zip by this estimate
+# (seconds per file plus bytes at the assumed speed, against the zip's bytes
+# at that speed), and always above $DeltaMaxFiles files. A higher assumed
+# speed favours the full zip, so it is set on the fast side.
+$DeltaMaxFiles      = 2000
+$DeltaSecPerFile    = 0.07          # measured: ~15 files/s
+$DeltaAssumedBps    = 4MB           # bytes per second
+
 
 # The file list's JSON -> @{ Tag; Files = @(@{ Path; Size; Sha256 }) }. Paths are
 # relative, with "/", and may not climb out of the client folder.
@@ -728,6 +739,24 @@ function Install-ClientDelta([string]$root, $manifest, $changed, [long]$total, [
 # The release's file list (checked against its SHA-256), what changed, and
 # the update from those files only. Returns the bytes fetched; throws when the
 # full download should be used instead.
+# Why the changed-files update should not be used for $count files of $bytes
+# bytes when the full zip is $zipBytes (0 = not known yet), or $null when it
+# is the faster way. UOSMALLZ_DELTA_MAX_FILES overrides $DeltaMaxFiles.
+function Get-DeltaRefusal([int]$count, [long]$bytes, [long]$zipBytes) {
+    $max = $DeltaMaxFiles
+    $env = [Environment]::GetEnvironmentVariable("UOSMALLZ_DELTA_MAX_FILES")
+    if ($env -match '^\d{1,7}$') { $max = [int]$env }
+    if ($count -gt $max) { return "$count files changed (more than $max)" }
+    if ($zipBytes -gt 0) {
+        $deltaSec = $count * $DeltaSecPerFile + $bytes / $DeltaAssumedBps
+        $fullSec = $zipBytes / $DeltaAssumedBps
+        if ($deltaSec -gt $fullSec) {
+            return ("{0} files would take about {1:N0} s one by one, the full zip about {2:N0} s" -f $count, $deltaSec, $fullSec)
+        }
+    }
+    return $null
+}
+
 function Invoke-ClientDelta([string]$root, $info) {
     $p = Get-Paths $root
     if (-not $info.ManifestUrl -or -not $info.ManifestSha256) { throw "the release has no checked file list" }
@@ -746,7 +775,11 @@ function Invoke-ClientDelta([string]$root, $info) {
     foreach ($f in $manifest.Files) { $all += $f.Size }
     foreach ($f in $changed) { $chg += $f.Size }
     if ($all -gt 0 -and $chg / $all -gt $DeltaMaxShare) { throw "most of the client changed" }
+    $why = Get-DeltaRefusal $changed.Count $chg 0
+    if ($why) { throw $why }
     $reader = New-RangeReader $info.Url
+    $why = Get-DeltaRefusal $changed.Count $chg $reader.Total
+    if ($why) { throw $why }
     return Install-ClientDelta $root $manifest $changed $reader.Total $reader.Read $info.Sha256 $info.Tag
 }
 
