@@ -1,0 +1,69 @@
+diff --git a/src/ClassicUO.Client/Game/GameObjects/Views/ItemView.cs b/src/ClassicUO.Client/Game/GameObjects/Views/ItemView.cs
+index f8afbf2..7b6bc83 100644
+--- a/src/ClassicUO.Client/Game/GameObjects/Views/ItemView.cs
++++ b/src/ClassicUO.Client/Game/GameObjects/Views/ItemView.cs
+@@ -492,8 +492,9 @@ namespace ClassicUO.Game.GameObjects
+                     Point position = RealScreenPosition;
+                     position.X += (int)Offset.X;
+                     position.Y += (int)(Offset.Y + Offset.Z);
+-                    position.X -= index.Width;
+-                    position.Y -= index.Height;
++                    Point artOffset = index.Length > 0 ? new Point(index.Width, index.Height) : Client.Game.UO.Arts.GetDrawOffset(graphic);   // uo-offline 0006: PNG-only art
++                    position.X -= artOffset.X;
++                    position.Y -= artOffset.Y;
+ 
+                     if (
+                         Client.Game.UO.Arts.PixelCheck(
+diff --git a/src/ClassicUO.Client/Game/GameObjects/Views/MultiView.cs b/src/ClassicUO.Client/Game/GameObjects/Views/MultiView.cs
+index bf0db8c..fbfa651 100644
+--- a/src/ClassicUO.Client/Game/GameObjects/Views/MultiView.cs
++++ b/src/ClassicUO.Client/Game/GameObjects/Views/MultiView.cs
+@@ -133,8 +133,9 @@ namespace ClassicUO.Game.GameObjects
+                 ref UOFileIndex index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(Graphic + 0x4000);
+ 
+                 Point position = RealScreenPosition;
+-                position.X -= index.Width;
+-                position.Y -= index.Height;
++                Point artOffset = index.Length > 0 ? new Point(index.Width, index.Height) : Client.Game.UO.Arts.GetDrawOffset(Graphic);   // uo-offline 0006: PNG-only art
++                position.X -= artOffset.X;
++                position.Y -= artOffset.Y;
+ 
+                 return Client.Game.UO.Arts.PixelCheck(
+                     Graphic,
+diff --git a/src/ClassicUO.Client/Game/GameObjects/Views/StaticView.cs b/src/ClassicUO.Client/Game/GameObjects/Views/StaticView.cs
+index 7c32548..834dd1c 100644
+--- a/src/ClassicUO.Client/Game/GameObjects/Views/StaticView.cs
++++ b/src/ClassicUO.Client/Game/GameObjects/Views/StaticView.cs
+@@ -170,8 +170,9 @@ namespace ClassicUO.Game.GameObjects
+             ref IO.UOFileIndex index = ref Client.Game.UO.FileManager.Arts.File.GetValidRefEntry(graphic + 0x4000);
+ 
+             Point position = RealScreenPosition;
+-            position.X -= index.Width;
+-            position.Y -= index.Height;
++            Point artOffset = index.Length > 0 ? new Point(index.Width, index.Height) : Client.Game.UO.Arts.GetDrawOffset(graphic);   // uo-offline 0006: PNG-only art
++            position.X -= artOffset.X;
++            position.Y -= artOffset.Y;
+ 
+             return Client.Game.UO.Arts.PixelCheck(
+                 graphic,
+diff --git a/src/ClassicUO.Renderer/Arts/Art.cs b/src/ClassicUO.Renderer/Arts/Art.cs
+index 434ab22..2d8b909 100644
+--- a/src/ClassicUO.Renderer/Arts/Art.cs
++++ b/src/ClassicUO.Renderer/Arts/Art.cs
+@@ -376,5 +376,16 @@ namespace ClassicUO.Renderer.Arts
+                 : _realArtBounds[idx];
+ 
+         public bool PixelCheck(uint idx, int x, int y, double scale = 1f) => _picker.Get(idx, x, y, scale: scale);
++        /// <summary>
++        ///     uo-offline 0006: where a static's art is drawn relative to its tile (x: half width - 22, y: height - 44),
++        ///     from the loaded sprite itself. Art that exists only as an ExternalImages PNG has no art.mul entry, so
++        ///     GetValidRefEntry hands back the one shared UOFileIndex.Invalid, whose Width/Height every such sprite
++        ///     overwrites while drawing: the hit test then used another item's offsets and missed small items.
++        /// </summary>
++        public Point GetDrawOffset(uint graphic)
++        {
++            ref readonly SpriteInfo info = ref GetArt(graphic);
++            return info.Texture == null ? Point.Zero : new Point((info.UV.Width >> 1) - 22, info.UV.Height - 44);
++        }
+     }
+ }

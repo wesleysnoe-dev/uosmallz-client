@@ -51,6 +51,13 @@ CASTLE WINDOWS (v10)
   lines are logged as "TileData overrides: ..." and skipped). The player's
   UO files stay untouched; all of it comes with client updates.
 
+CASTLE ART FIX (v11)
+  v11 redraws the castle item art (0xFE00-0xFE0D) with stock tile anchoring
+  and size, gives the castle books a stock book's tiledata (height 1, no
+  container flag) and adds patches/client/0006: items whose art exists only
+  as an ExternalImages PNG now take their click area from their own sprite,
+  so the tomes and checkbook can be picked up again.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
