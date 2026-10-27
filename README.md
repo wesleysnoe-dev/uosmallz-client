@@ -42,6 +42,15 @@ ITEM ICONS
   art when it would not fit its row. They come with client updates, beside
   TazUO.exe and outside Data\. item-icons.csv maps item id -> gump id.
 
+CASTLE WINDOWS (v10)
+  Since v10 the client carries the castle QoL kit's window art (gump ids
+  0xB700-0xB76D in ExternalImages\gumps, above the item icons), art for the
+  new castle items (item ids 0xFE00-0xFE0D in ExternalImages\art, 1x) and
+  tiledata for them: patches/client/0005 reads TileData\*.csv beside
+  TazUO.exe after the player's tiledata.mul (only ids 0xFE00-0xFE0D; bad
+  lines are logged as "TileData overrides: ..." and skipped). The player's
+  UO files stay untouched; all of it comes with client updates.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most

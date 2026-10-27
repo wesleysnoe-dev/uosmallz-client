@@ -1,0 +1,16 @@
+# UO Smallz castle items (uo-offline client-art-castle): id,flags,weight,layer,count,animId,hue,lightIndex,height,name
+# read by client patch 0005 (TileData/*.csv beside TazUO.exe); values = the stock analogue in tiledata-castle.json
+0xFE00,0x204040,255,0,0,0,0,8,12,storage shelf
+0xFE01,0x204040,255,0,0,0,0,8,12,storage shelf
+0xFE02,0x204040,255,0,0,0,0,8,3,resource stockpile
+0xFE03,0x204040,255,0,0,0,0,8,3,resource stockpile
+0xFE04,0x204040,255,0,0,0,0,15,4,magic item vault
+0xFE05,0x204040,255,0,0,0,0,15,4,magic item vault
+0xFE06,0x204040,255,0,0,0,0,15,4,bank deposit safe
+0xFE07,0x204040,255,0,0,0,0,15,4,bank deposit safe
+0xFE08,0x200000,1,0,0,0,0,20,2,treasure map tome
+0xFE09,0x200000,1,0,0,0,0,20,2,treasure map tome
+0xFE0A,0x200000,1,0,0,0,0,20,2,power scroll tome
+0xFE0B,0x200000,1,0,0,0,0,20,2,power scroll tome
+0xFE0C,0x4000,2,0,20,0,0,10,1,checkbook
+0xFE0D,0x4000,2,0,20,0,0,10,1,checkbook

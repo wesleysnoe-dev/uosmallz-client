@@ -1,0 +1,122 @@
+diff --git a/src/ClassicUO.Assets/TileDataLoader.cs b/src/ClassicUO.Assets/TileDataLoader.cs
+index 9dc274888..43e29f351 100644
+--- a/src/ClassicUO.Assets/TileDataLoader.cs
++++ b/src/ClassicUO.Assets/TileDataLoader.cs
+@@ -2,6 +2,7 @@
+ 
+ using ClassicUO.IO;
+ using ClassicUO.Utility;
++using ClassicUO.Utility.Logging;
+ using System;
+ using System.Runtime.InteropServices;
+ using System.Text;
+@@ -17,6 +18,98 @@ namespace ClassicUO.Assets
+         {
+         }
+ 
++        // One line per static: id,flags,weight,layer,count,animId,hue,lightIndex,height,name (ids hex 0x.. or
++        // decimal, flags hex or decimal; '#' comments). Only the reserved shard range is accepted; a bad line is
++        // logged (file and line) and skipped; a file that cannot be read is logged and skipped. Never throws:
++        // a broken or locked csv must not stop the client from starting.
++        public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
++        private const int MaxLineWarnings = 20;
++
++        private void ApplyOverrides(string dir)
++        {
++            string[] files;
++            try
++            {
++                if (!System.IO.Directory.Exists(dir) || _staticData == null)
++                    return;
++                files = System.IO.Directory.GetFiles(dir, "*.csv");
++                System.Array.Sort(files, StringComparer.Ordinal);
++            }
++            catch (Exception e)
++            {
++                Log.Warn($"TileData overrides: cannot list {dir}: {e.Message}");
++                return;
++            }
++
++            foreach (string file in files)
++            {
++                string name = System.IO.Path.GetFileName(file);
++                try
++                {
++                    string[] lines = System.IO.File.ReadAllLines(file);
++                    int applied = 0, skipped = 0;
++                    for (int n = 0; n < lines.Length; n++)
++                    {
++                        string line = lines[n].Trim().TrimStart('\uFEFF');
++                        if (line.Length == 0 || line[0] == '#')
++                            continue;
++                        string why = ParseOverride(line, out uint id, out StaticTiles tile);
++                        if (why != null)
++                        {
++                            // at most MaxLineWarnings per file, then one summary line (a junk file must not flood the log)
++                            if (++skipped <= MaxLineWarnings)
++                                Log.Warn($"TileData overrides: {name} line {n + 1} skipped: {why}");
++                            continue;
++                        }
++                        _staticData[id] = tile;
++                        applied++;
++                    }
++                    if (skipped > MaxLineWarnings)
++                        Log.Warn($"TileData overrides: {name}: {skipped - MaxLineWarnings} more lines skipped");
++                    Log.Trace($"TileData overrides: {name}: {applied} entries");
++                }
++                catch (Exception e)
++                {
++                    Log.Warn($"TileData overrides: cannot read {name}: {e.Message}");
++                }
++            }
++        }
++
++        // null when the line is good; else why not.
++        private string ParseOverride(string line, out uint id, out StaticTiles tile)
++        {
++            id = 0;
++            tile = default;
++            string[] f = line.Split(',', 10);
++            if (f.Length < 10)
++                return $"{f.Length} fields, want 10";
++            string[] names = { "id", "flags", "weight", "layer", "count", "animId", "hue", "lightIndex", "height" };
++            ulong[] max = { uint.MaxValue, ulong.MaxValue, byte.MaxValue, byte.MaxValue, int.MaxValue, ushort.MaxValue, ushort.MaxValue, ushort.MaxValue, byte.MaxValue };
++            var v = new ulong[9];
++            for (int i = 0; i < 9; i++)
++            {
++                if (!TryNum(f[i], out v[i]))
++                    return $"{names[i]} '{f[i].Trim()}' is not a number";
++                if (v[i] > max[i])
++                    return $"{names[i]} {v[i]} is out of range (max {max[i]})";
++            }
++            if (v[0] < OverrideFirst || v[0] > OverrideLast)
++                return $"id 0x{v[0]:X} is outside the reserved override range 0x{OverrideFirst:X}-0x{OverrideLast:X} (stock tiledata is never overridden)";
++            if (v[0] >= (ulong)_staticData.Length)
++                return $"id 0x{v[0]:X} is beyond the loaded tiledata ({_staticData.Length} statics)";
++            id = (uint)v[0];
++            tile = new StaticTiles(v[1], (byte)v[2], (byte)v[3], (int)v[4], (ushort)v[5], (ushort)v[6], (ushort)v[7], (byte)v[8], string.Intern(f[9].Trim()));
++            return null;
++        }
++
++        private static bool TryNum(string s, out ulong v)
++        {
++            s = s.Trim();
++            return s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
++                ? ulong.TryParse(s.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out v)
++                : ulong.TryParse(s, out v);
++        }
++
+         public ref LandTiles[] LandData => ref _landData;
+         public ref StaticTiles[] StaticData => ref _staticData;
+ 
+@@ -116,6 +209,10 @@ namespace ClassicUO.Assets
+             }
+ 
+ 
++            // uo-offline (UO Smallz) 0005: the shard's own items (art ids with no stock tiledata) get their
++            // tiledata from TileData/*.csv beside TazUO.exe, so the player's UO files stay untouched.
++            ApplyOverrides(System.IO.Path.Combine(AppContext.BaseDirectory, "TileData"));
++
+             //path = Path.Combine(FileManager.UoFolderPath, "tileart.uop");
+ 
+             //if (File.Exists(path))
