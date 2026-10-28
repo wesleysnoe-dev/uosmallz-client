@@ -13,6 +13,13 @@ LICENSE-TazUO-ClassicUO.txt. The bundled third-party libraries keep their own
 licenses, listed in the TazUO source tree (external/ and the NuGet packages
 referenced by its project files).
 
+Some scroll, reagent and spell icon images (ExternalImages\art and ExternalImages\gumps) are
+CorvaeOboro's Ultima Online art mods, CC0 1.0 (public domain); see
+ExternalImages\CORVAE-ART-NOTICE.txt and CORVAE-ART-LICENSE-CC0.txt. Credit, as that notice gives it:
+CorvaeOboro's own READMEs say the scrolls are based on ScrollsByJewele (Jewele) and ScrollsByCircle
+(Gaechti), and the Magery spell icons on MoreColorSpells (Gaechti and Boothby); the mod also paints over
+the classic Ultima Online line art. CC0 covers CorvaeOboro's contribution only.
+
 No Ultima Online game data is included. Ultima Online is a trademark of
 Electronic Arts / Broadsword; the game data belongs to them. This project is
 not affiliated with EA or Broadsword.

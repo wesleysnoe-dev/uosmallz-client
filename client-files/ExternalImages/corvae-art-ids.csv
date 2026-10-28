@@ -1,0 +1,238 @@
+id,kind,school,name,replaces,source_in_corvae_repo,stock_size,png_size,pin_holes_filled
+0x1F2E,art,Magery scrolls,item_scroll_1_Clumsy,"stock item art 0x1F2E ""Clumsy Scroll""",ART/ART_MagicScrolls/item_scroll_1_Clumsy_0x1F2E.bmp,44x39,88x78,0
+0x1F2F,art,Magery scrolls,item_scroll_1_CreateFood,"stock item art 0x1F2F ""Create Food Scroll""",ART/ART_MagicScrolls/item_scroll_1_CreateFood_0x1F2F.bmp,44x32,88x64,0
+0x1F30,art,Magery scrolls,item_scroll_1_Feeblemind,"stock item art 0x1F30 ""Feeblemind Scroll""",ART/ART_MagicScrolls/item_scroll_1_Feeblemind_0x1F30.bmp,44x32,88x64,0
+0x1F31,art,Magery scrolls,item_scroll_1_Heal,"stock item art 0x1F31 ""Heal Scroll""",ART/ART_MagicScrolls/item_scroll_1_Heal_0x1F31.bmp,44x39,88x78,0
+0x1F32,art,Magery scrolls,item_scroll_1_MagicArrow,"stock item art 0x1F32 ""Magic Arrow Scroll""",ART/ART_MagicScrolls/item_scroll_1_MagicArrow_0x1F32.bmp,44x39,88x78,0
+0x1F33,art,Magery scrolls,item_scroll_1_NightSight,"stock item art 0x1F33 ""Night Sight Scroll""",ART/ART_MagicScrolls/item_scroll_1_NightSight_0x1F33.bmp,44x32,88x64,0
+0x1F2D,art,Magery scrolls,item_scroll_1_ReactiveArmor,"stock item art 0x1F2D ""Reactive Armor Scr""",ART/ART_MagicScrolls/item_scroll_1_ReactiveArmor_0x1F2D.bmp,44x39,88x78,0
+0x1F34,art,Magery scrolls,item_scroll_1_Weaken,"stock item art 0x1F34 ""Weaken Scroll""",ART/ART_MagicScrolls/item_scroll_1_Weaken_0x1F34.bmp,44x32,88x64,0
+0x1F35,art,Magery scrolls,item_scroll_2_Agility,"stock item art 0x1F35 ""Agility Scroll""",ART/ART_MagicScrolls/item_scroll_2_Agility_0x1F35.bmp,44x39,88x78,0
+0x1F36,art,Magery scrolls,item_scroll_2_Cunning,"stock item art 0x1F36 ""Cunning Scroll""",ART/ART_MagicScrolls/item_scroll_2_Cunning_0x1F36.bmp,44x39,88x78,0
+0x1F37,art,Magery scrolls,item_scroll_2_Cure,"stock item art 0x1F37 ""Cure Scroll""",ART/ART_MagicScrolls/item_scroll_2_Cure_0x1F37.bmp,44x32,88x64,0
+0x1F38,art,Magery scrolls,item_scroll_2_Harm,"stock item art 0x1F38 ""Harm Scroll""",ART/ART_MagicScrolls/item_scroll_2_Harm_0x1F38.bmp,44x32,88x64,0
+0x1F39,art,Magery scrolls,item_scroll_2_MagicTrap,"stock item art 0x1F39 ""Magic Trap Scroll""",ART/ART_MagicScrolls/item_scroll_2_MagicTrap_0x1F39.bmp,44x39,88x78,0
+0x1F3A,art,Magery scrolls,item_scroll_2_MagicUnTrap,"stock item art 0x1F3A ""Magic Untrap Scrol""",ART/ART_MagicScrolls/item_scroll_2_MagicUnTrap_0x1F3A.bmp,44x39,88x78,0
+0x1F3B,art,Magery scrolls,item_scroll_2_Protection,"stock item art 0x1F3B ""Protection Scroll""",ART/ART_MagicScrolls/item_scroll_2_Protection_0x1F3B.bmp,44x32,88x64,0
+0x1F3C,art,Magery scrolls,item_scroll_2_Strength,"stock item art 0x1F3C ""Strength Scroll""",ART/ART_MagicScrolls/item_scroll_2_Strength_0x1F3C.bmp,44x32,88x64,0
+0x1F3D,art,Magery scrolls,item_scroll_3_Bless,"stock item art 0x1F3D ""Bless Scroll""",ART/ART_MagicScrolls/item_scroll_3_Bless_0x1F3D.bmp,44x39,88x78,0
+0x1F3E,art,Magery scrolls,item_scroll_3_Fireball,"stock item art 0x1F3E ""Fireball Scroll""",ART/ART_MagicScrolls/item_scroll_3_Fireball_0x1F3E.bmp,44x39,88x78,0
+0x1F3F,art,Magery scrolls,item_scroll_3_MagicLock,"stock item art 0x1F3F ""Magic Lock Scroll""",ART/ART_MagicScrolls/item_scroll_3_MagicLock_0x1F3F.bmp,44x32,88x64,0
+0x1F40,art,Magery scrolls,item_scroll_3_Poison,"stock item art 0x1F40 ""Poison Scroll""",ART/ART_MagicScrolls/item_scroll_3_Poison_0x1F40.bmp,44x32,88x64,0
+0x1F41,art,Magery scrolls,item_scroll_3_Telekinisis,"stock item art 0x1F41 ""Telekinisis Scroll""",ART/ART_MagicScrolls/item_scroll_3_Telekinisis_0x1F41.bmp,44x39,88x78,0
+0x1F42,art,Magery scrolls,item_scroll_3_Teleport,"stock item art 0x1F42 ""Teleport Scroll""",ART/ART_MagicScrolls/item_scroll_3_Teleport_0x1F42.bmp,44x39,88x78,0
+0x1F43,art,Magery scrolls,item_scroll_3_Unlock,"stock item art 0x1F43 ""Unlock Scroll""",ART/ART_MagicScrolls/item_scroll_3_Unlock_0x1F43.bmp,44x32,88x64,0
+0x1F44,art,Magery scrolls,item_scroll_3_WallOfStone,"stock item art 0x1F44 ""Wall of Stone Scro""",ART/ART_MagicScrolls/item_scroll_3_WallOfStone_0x1F44.bmp,44x32,88x64,0
+0x1F45,art,Magery scrolls,item_scroll_4_ArchCure,"stock item art 0x1F45 ""Archcure Scroll""",ART/ART_MagicScrolls/item_scroll_4_ArchCure_0x1F45.bmp,44x39,88x78,0
+0x1F46,art,Magery scrolls,item_scroll_4_ArchProtection,"stock item art 0x1F46 ""Arch Protection Sc""",ART/ART_MagicScrolls/item_scroll_4_ArchProtection_0x1F46.bmp,44x39,88x78,0
+0x1F47,art,Magery scrolls,item_scroll_4_Curse,"stock item art 0x1F47 ""Curse Scroll""",ART/ART_MagicScrolls/item_scroll_4_Curse_0x1F47.bmp,44x32,88x64,0
+0x1F48,art,Magery scrolls,item_scroll_4_FireField,"stock item art 0x1F48 ""Fire Field Scrol""",ART/ART_MagicScrolls/item_scroll_4_FireField_0x1F48.bmp,44x32,88x64,0
+0x1F49,art,Magery scrolls,item_scroll_4_GreaterHeal,"stock item art 0x1F49 ""Greater Heal Scrol""",ART/ART_MagicScrolls/item_scroll_4_GreaterHeal_0x1F49.bmp,44x39,88x78,0
+0x1F4A,art,Magery scrolls,item_scroll_4_Lightning,"stock item art 0x1F4A ""Lightning Scroll""",ART/ART_MagicScrolls/item_scroll_4_Lightning_0x1F4A.bmp,44x39,88x78,0
+0x1F4B,art,Magery scrolls,item_scroll_4_ManaDrain,"stock item art 0x1F4B ""ManaDrain Scroll""",ART/ART_MagicScrolls/item_scroll_4_ManaDrain_0x1F4B.bmp,44x32,88x64,5
+0x1F4C,art,Magery scrolls,item_scroll_4_Recall,"stock item art 0x1F4C ""Recall""",ART/ART_MagicScrolls/item_scroll_4_Recall_0x1F4C.bmp,44x32,88x64,0
+0x1F4D,art,Magery scrolls,item_scroll_5_BladeSpirits,"stock item art 0x1F4D ""Blade Spirits Scro""",ART/ART_MagicScrolls/item_scroll_5_BladeSpirits_0x1F4D.bmp,44x39,88x78,2
+0x1F4E,art,Magery scrolls,item_scroll_5_DispelField,"stock item art 0x1F4E ""Dispel Field Scrol""",ART/ART_MagicScrolls/item_scroll_5_DispelField_0x1F4E.bmp,44x39,88x78,2
+0x1F4F,art,Magery scrolls,item_scroll_5_Incognito,"stock item art 0x1F4F ""Incognito Scroll""",ART/ART_MagicScrolls/item_scroll_5_Incognito_0x1F4F.bmp,44x32,88x64,2
+0x1F50,art,Magery scrolls,item_scroll_5_MagicReflect,"stock item art 0x1F50 ""Magic Reflection S""",ART/ART_MagicScrolls/item_scroll_5_MagicReflect_0x1F50.bmp,44x32,88x64,1
+0x1F51,art,Magery scrolls,item_scroll_5_MindBlast,"stock item art 0x1F51 ""Mind Blast Scroll""",ART/ART_MagicScrolls/item_scroll_5_MindBlast_0x1F51.bmp,44x39,88x78,2
+0x1F52,art,Magery scrolls,item_scroll_5_Paralyze,"stock item art 0x1F52 ""Paralyze Scroll""",ART/ART_MagicScrolls/item_scroll_5_Paralyze_0x1F52.bmp,44x39,88x78,2
+0x1F53,art,Magery scrolls,item_scroll_5_PoisonField,"stock item art 0x1F53 ""Poison Field Scrol""",ART/ART_MagicScrolls/item_scroll_5_PoisonField_0x1F53.bmp,44x32,88x64,4
+0x1F54,art,Magery scrolls,item_scroll_5_SummonCreature,"stock item art 0x1F54 ""Summon Creature Sc""",ART/ART_MagicScrolls/item_scroll_5_SummonCreature_0x1F54.bmp,44x32,88x64,4
+0x1F55,art,Magery scrolls,item_scroll_6_Dispel,"stock item art 0x1F55 ""Dispel Scroll""",ART/ART_MagicScrolls/item_scroll_6_Dispel_0x1F55.bmp,44x39,88x78,0
+0x1F56,art,Magery scrolls,item_scroll_6_EnergyBolt,"stock item art 0x1F56 ""Energy Bolt Scroll""",ART/ART_MagicScrolls/item_scroll_6_EnergyBolt_0x1F56.bmp,44x39,88x78,0
+0x1F57,art,Magery scrolls,item_scroll_6_Explosion,"stock item art 0x1F57 ""Explosion Scroll""",ART/ART_MagicScrolls/item_scroll_6_Explosion_0x1F57.bmp,44x32,88x64,0
+0x1F58,art,Magery scrolls,item_scroll_6_Invisibility,"stock item art 0x1F58 ""Invisibility Scrol""",ART/ART_MagicScrolls/item_scroll_6_Invisibility_0x1F58.bmp,44x32,88x64,0
+0x1F59,art,Magery scrolls,item_scroll_6_Mark,"stock item art 0x1F59 ""Mark Scroll""",ART/ART_MagicScrolls/item_scroll_6_Mark_0x1F59.bmp,44x39,88x78,0
+0x1F5A,art,Magery scrolls,item_scroll_6_MassCurse,"stock item art 0x1F5A ""Mass Curse Scroll""",ART/ART_MagicScrolls/item_scroll_6_MassCurse_0x1F5A.bmp,44x39,88x78,0
+0x1F5B,art,Magery scrolls,item_scroll_6_ParalyzeField,"stock item art 0x1F5B ""Paralyze Field Scr""",ART/ART_MagicScrolls/item_scroll_6_ParalyzeField_0x1F5B.bmp,44x32,88x64,0
+0x1F5C,art,Magery scrolls,item_scroll_6_Reveal,"stock item art 0x1F5C ""Reveal Scroll""",ART/ART_MagicScrolls/item_scroll_6_Reveal_0x1F5C.bmp,44x32,88x64,0
+0x1F5D,art,Magery scrolls,item_scroll_7_ChainLightning,"stock item art 0x1F5D ""Chain Lightning Sc""",ART/ART_MagicScrolls/item_scroll_7_ChainLightning_0x1F5D.bmp,44x39,88x78,1
+0x1F5E,art,Magery scrolls,item_scroll_7_EnergyField,"stock item art 0x1F5E ""Energy Fied Scroll""",ART/ART_MagicScrolls/item_scroll_7_EnergyField_0x1F5E.bmp,44x39,88x78,0
+0x1F5F,art,Magery scrolls,item_scroll_7_Flamestrike,"stock item art 0x1F5F ""Flamestrike Scroll""",ART/ART_MagicScrolls/item_scroll_7_Flamestrike_0x1F5F.bmp,44x32,88x64,0
+0x1F60,art,Magery scrolls,item_scroll_7_GateTravel,"stock item art 0x1F60 ""Gate Travel Scroll""",ART/ART_MagicScrolls/item_scroll_7_GateTravel_0x1F60.bmp,44x32,88x64,0
+0x1F61,art,Magery scrolls,item_scroll_7_ManaVampire,"stock item art 0x1F61 ""Mana Vampire Scrol""",ART/ART_MagicScrolls/item_scroll_7_ManaVampire_0x1F61.bmp,44x39,88x78,0
+0x1F62,art,Magery scrolls,item_scroll_7_MassDispel,"stock item art 0x1F62 ""Mass Dispel Scrol""",ART/ART_MagicScrolls/item_scroll_7_MassDispel_0x1F62.bmp,44x39,88x78,0
+0x1F63,art,Magery scrolls,item_scroll_7_MeteorSwarm,"stock item art 0x1F63 ""Meteor Storm Scrol""",ART/ART_MagicScrolls/item_scroll_7_MeteorSwarm_0x1F63.bmp,44x32,88x64,0
+0x1F64,art,Magery scrolls,item_scroll_7_Polymorph,"stock item art 0x1F64 ""Polymorph Scroll""",ART/ART_MagicScrolls/item_scroll_7_Polymorph_0x1F64.bmp,44x32,88x64,0
+0x1F65,art,Magery scrolls,item_scroll_8_Earthquake,"stock item art 0x1F65 ""Earthquake Scroll""",ART/ART_MagicScrolls/item_scroll_8_Earthquake_0x1F65.bmp,44x39,88x78,0
+0x1F66,art,Magery scrolls,item_scroll_8_EnergyVortex,"stock item art 0x1F66 ""Energy Vortex Scro""",ART/ART_MagicScrolls/item_scroll_8_EnergyVortex_0x1F66.bmp,44x39,88x78,0
+0x1F67,art,Magery scrolls,item_scroll_8_Resurrection,"stock item art 0x1F67 ""Resurrection Scrol""",ART/ART_MagicScrolls/item_scroll_8_Resurrection_0x1F67.bmp,44x32,88x64,0
+0x1F68,art,Magery scrolls,item_scroll_8_SummonAirElemental,"stock item art 0x1F68 ""Summon Air Element""",ART/ART_MagicScrolls/item_scroll_8_SummonAirElemental_0x1F68.bmp,44x32,88x64,0
+0x1F69,art,Magery scrolls,item_scroll_8_SummonDaemon,"stock item art 0x1F69 ""Summon Daemon""",ART/ART_MagicScrolls/item_scroll_8_SummonDaemon_0x1F69.bmp,44x39,88x78,2
+0x1F6A,art,Magery scrolls,item_scroll_8_SummonEarthElemental,"stock item art 0x1F6A ""Summon Earth Eleme""",ART/ART_MagicScrolls/item_scroll_8_SummonEarthElemental_0x1F6A.bmp,44x39,88x78,0
+0x1F6B,art,Magery scrolls,item_scroll_8_SummonFireElemental,"stock item art 0x1F6B ""Summon Fire Elemen""",ART/ART_MagicScrolls/item_scroll_8_SummonFireElemental_0x1F6B.bmp,44x32,88x64,0
+0x1F6C,art,Magery scrolls,item_scroll_8_SummonWaterElemental,"stock item art 0x1F6C ""Summon Water Eleme""",ART/ART_MagicScrolls/item_scroll_8_SummonWaterElemental_0x1F6C.bmp,44x32,88x64,0
+0x0F7A,art,Magery reagents,item_reagent_BlackPearl,"stock item art 0x0F7A ""Black Pearl""",ART/ART_Reagents/item_reagent_BlackPearl_0x0F7A.bmp,44x20,88x40,0
+0x0F7B,art,Magery reagents,item_reagent_BloodMoss,"stock item art 0x0F7B ""Blood Moss""",ART/ART_Reagents/item_reagent_BloodMoss_0x0F7B.bmp,44x30,88x60,1
+0x0F84,art,Magery reagents,item_reagent_Garlic,"stock item art 0x0F84 ""Garlic""",ART/ART_Reagents/item_reagent_Garlic_0x0F84.bmp,44x29,88x58,2
+0x0F85,art,Magery reagents,item_reagent_Gensing,"stock item art 0x0F85 ""Ginseng""",ART/ART_Reagents/item_reagent_Gensing_0x0F85.bmp,44x26,88x52,7
+0x0F86,art,Magery reagents,item_reagent_MandrakeRoot,"stock item art 0x0F86 ""Mandrake Root""",ART/ART_Reagents/item_reagent_MandrakeRoot_0x0F86.bmp,44x24,88x48,0
+0x0F88,art,Magery reagents,item_reagent_NightShade,"stock item art 0x0F88 ""Nightshade""",ART/ART_Reagents/item_reagent_NightShade_0x0F88.bmp,44x34,88x68,10
+0x0F8D,art,Magery reagents,item_reagent_SpiderSilk,"stock item art 0x0F8D ""Spider's Silk""",ART/ART_Reagents/item_reagent_SpiderSilk_0x0F8D.bmp,44x32,88x64,38
+0x0F8C,art,Magery reagents,item_reagent_SulphurousAsh,"stock item art 0x0F8C ""Sulfurous Ash""",ART/ART_Reagents/item_reagent_SulphurousAsh_0x0F8C.bmp,44x33,88x66,0
+0x0F78,art,Necromancy (pagan) reagents,item_reagentPagan_BatWing,"stock item art 0x0F78 ""Batwing""",ART/ART_ReagentPagan/item_reagentPagan_BatWing_0x0F78.bmp,44x33,88x66,0
+0x0F7E,art,Necromancy (pagan) reagents,item_reagentPagan_Bone,"stock item art 0x0F7E ""Bone""",ART/ART_ReagentPagan/item_reagentPagan_Bone_0x0F7E.bmp,44x25,88x50,0
+0x0F7D,art,Necromancy (pagan) reagents,item_reagentPagan_DaemonBlood,"stock item art 0x0F7D ""Daemon Blood""",ART/ART_ReagentPagan/item_reagentPagan_DaemonBlood_0x0F7D.bmp,44x33,88x66,0
+0x0F80,art,Necromancy (pagan) reagents,item_reagentPagan_DaemonBone,"stock item art 0x0F80 ""Daemon Bone""",ART/ART_ReagentPagan/item_reagentPagan_DaemonBone_0x0F80.bmp,44x22,88x44,0
+0x0F90,art,Necromancy (pagan) reagents,item_reagentPagan_DeadWood,"stock item art 0x0F90 ""Dead Wood """,ART/ART_ReagentPagan/item_reagentPagan_DeadWood_0x0F90.bmp,44x33,88x66,3
+0x0F82,art,Necromancy (pagan) reagents,item_reagentPagan_DragonsBlood,"stock item art 0x0F82 ""Dragon's Blood""",ART/ART_ReagentPagan/item_reagentPagan_DragonsBlood_0x0F82.bmp,44x32,88x64,0
+0x0F83,art,Necromancy (pagan) reagents,item_reagentPagan_ExecutionersCap,"stock item art 0x0F83 ""Executioner's Cap""",ART/ART_ReagentPagan/item_reagentPagan_ExecutionersCap_0x0F83.bmp,44x35,88x70,0
+0x0F87,art,Necromancy (pagan) reagents,item_reagentPagan_EyeOfNewt,"stock item art 0x0F87 ""Eye of Newt""",ART/ART_ReagentPagan/item_reagentPagan_EyeOfNewt_0x0F87.bmp,44x15,88x30,0
+0x0F81,art,Necromancy (pagan) reagents,item_reagentPagan_FertileDirt,"stock item art 0x0F81 ""Fertile Dirt""",ART/ART_ReagentPagan/item_reagentPagan_FertileDirt_0x0F81.bmp,44x33,88x66,0
+0x0F8F,art,Necromancy (pagan) reagents,item_reagentPagan_GraveDust,"stock item art 0x0F8F ""Grave Dust""",ART/ART_ReagentPagan/item_reagentPagan_GraveDust_0x0F8F.bmp,44x33,88x66,0
+0x0F8E,art,Necromancy (pagan) reagents,item_reagentPagan_NoxCrystal,"stock item art 0x0F8E ""Nox Crystal""",ART/ART_ReagentPagan/item_reagentPagan_NoxCrystal_0x0F8E.bmp,44x38,88x76,0
+0x0F89,art,Necromancy (pagan) reagents,item_reagentPagan_Obsidian,"stock item art 0x0F89 ""Obsidian""",ART/ART_ReagentPagan/item_reagentPagan_Obsidian_0x0F89.bmp,44x35,88x70,0
+0x0F8A,art,Necromancy (pagan) reagents,item_reagentPagan_PigIron,"stock item art 0x0F8A ""Pig Iron""",ART/ART_ReagentPagan/item_reagentPagan_PigIron_0x0F8A.bmp,44x38,88x76,0
+0x0F91,art,Necromancy (pagan) reagents,item_reagentPagan_WyrmsHeart,"stock item art 0x0F91 ""Wyrm's Heart""",ART/ART_ReagentPagan/item_reagentPagan_WyrmsHeart_0x0F91.bmp,44x32,88x64,0
+0x08C0,gump,Magery,ui_spell_1_Clumsy,stock gump 0x08C0 (spell icon),UI/UI_MagicSpells/ui_spell_1_Clumsy_0x08C0.bmp,44x44,88x88,0
+0x08C1,gump,Magery,ui_spell_1_CreateFood,stock gump 0x08C1 (spell icon),UI/UI_MagicSpells/ui_spell_1_CreateFood_0x08C1.bmp,44x44,88x88,0
+0x08C2,gump,Magery,ui_spell_1_Feeblemind,stock gump 0x08C2 (spell icon),UI/UI_MagicSpells/ui_spell_1_Feeblemind_0x08C2.bmp,44x44,88x88,0
+0x08C3,gump,Magery,ui_spell_1_Heal,stock gump 0x08C3 (spell icon),UI/UI_MagicSpells/ui_spell_1_Heal_0x08C3.bmp,44x44,88x88,0
+0x08C4,gump,Magery,ui_spell_1_MagicArrow,stock gump 0x08C4 (spell icon),UI/UI_MagicSpells/ui_spell_1_MagicArrow_0x08C4.bmp,44x44,88x88,0
+0x08C5,gump,Magery,ui_spell_1_NightSight,stock gump 0x08C5 (spell icon),UI/UI_MagicSpells/ui_spell_1_NightSight_0x08C5.bmp,44x44,88x88,0
+0x08C6,gump,Magery,ui_spell_1_ReactiveArmor,stock gump 0x08C6 (spell icon),UI/UI_MagicSpells/ui_spell_1_ReactiveArmor_0x08C6.bmp,44x44,88x88,0
+0x08C7,gump,Magery,ui_spell_1_Weaken,stock gump 0x08C7 (spell icon),UI/UI_MagicSpells/ui_spell_1_Weaken_0x08C7.bmp,44x44,88x88,0
+0x08C8,gump,Magery,ui_spell_2_Agility,stock gump 0x08C8 (spell icon),UI/UI_MagicSpells/ui_spell_2_Agility_0x08C8.bmp,44x44,88x88,0
+0x08C9,gump,Magery,ui_spell_2_Cunning,stock gump 0x08C9 (spell icon),UI/UI_MagicSpells/ui_spell_2_Cunning_0x08C9.bmp,44x44,88x88,0
+0x08CA,gump,Magery,ui_spell_2_Cure,stock gump 0x08CA (spell icon),UI/UI_MagicSpells/ui_spell_2_Cure_0x08CA.bmp,44x44,88x88,0
+0x08CB,gump,Magery,ui_spell_2_Harm,stock gump 0x08CB (spell icon),UI/UI_MagicSpells/ui_spell_2_Harm_0x08CB.bmp,44x44,88x88,0
+0x08CC,gump,Magery,ui_spell_2_MagicTrap,stock gump 0x08CC (spell icon),UI/UI_MagicSpells/ui_spell_2_MagicTrap_0x08CC.bmp,44x44,88x88,0
+0x08CD,gump,Magery,ui_spell_2_MagicUnTrap,stock gump 0x08CD (spell icon),UI/UI_MagicSpells/ui_spell_2_MagicUnTrap_0x08CD.bmp,44x44,88x88,0
+0x08CE,gump,Magery,ui_spell_2_Protection,stock gump 0x08CE (spell icon),UI/UI_MagicSpells/ui_spell_2_Protection_0x08CE.bmp,44x44,88x88,0
+0x08CF,gump,Magery,ui_spell_2_Strength,stock gump 0x08CF (spell icon),UI/UI_MagicSpells/ui_spell_2_Strength_0x08CF.bmp,44x44,88x88,0
+0x08D0,gump,Magery,ui_spell_3_Bless,stock gump 0x08D0 (spell icon),UI/UI_MagicSpells/ui_spell_3_Bless_0x08D0.bmp,44x44,88x88,0
+0x08D1,gump,Magery,ui_spell_3_Fireball,stock gump 0x08D1 (spell icon),UI/UI_MagicSpells/ui_spell_3_Fireball_0x08D1.bmp,44x44,88x88,0
+0x08D2,gump,Magery,ui_spell_3_MagicLock,stock gump 0x08D2 (spell icon),UI/UI_MagicSpells/ui_spell_3_MagicLock_0x08D2.bmp,44x44,88x88,0
+0x08D3,gump,Magery,ui_spell_3_Poison,stock gump 0x08D3 (spell icon),UI/UI_MagicSpells/ui_spell_3_Poison_0x08D3.bmp,44x44,88x88,0
+0x08D4,gump,Magery,ui_spell_3_Telekinisis,stock gump 0x08D4 (spell icon),UI/UI_MagicSpells/ui_spell_3_Telekinisis_0x08D4.bmp,44x44,88x88,0
+0x08D5,gump,Magery,ui_spell_3_Teleport,stock gump 0x08D5 (spell icon),UI/UI_MagicSpells/ui_spell_3_Teleport_0x08D5.bmp,44x44,88x88,0
+0x08D6,gump,Magery,ui_spell_3_Unlock,stock gump 0x08D6 (spell icon),UI/UI_MagicSpells/ui_spell_3_Unlock_0x08D6.bmp,44x44,88x88,0
+0x08D7,gump,Magery,ui_spell_3_WallOfStone,stock gump 0x08D7 (spell icon),UI/UI_MagicSpells/ui_spell_3_WallOfStone_0x08D7.bmp,44x44,88x88,0
+0x08D8,gump,Magery,ui_spell_4_ArchCure,stock gump 0x08D8 (spell icon),UI/UI_MagicSpells/ui_spell_4_ArchCure_0x08D8.bmp,44x44,88x88,0
+0x08D9,gump,Magery,ui_spell_4_ArchProtection,stock gump 0x08D9 (spell icon),UI/UI_MagicSpells/ui_spell_4_ArchProtection_0x08D9.bmp,44x44,88x88,0
+0x08DA,gump,Magery,ui_spell_4_Curse,stock gump 0x08DA (spell icon),UI/UI_MagicSpells/ui_spell_4_Curse_0x08DA.bmp,44x44,88x88,0
+0x08DB,gump,Magery,ui_spell_4_FireField,stock gump 0x08DB (spell icon),UI/UI_MagicSpells/ui_spell_4_FireField_0x08DB.bmp,44x44,88x88,0
+0x08DC,gump,Magery,ui_spell_4_GreaterHeal,stock gump 0x08DC (spell icon),UI/UI_MagicSpells/ui_spell_4_GreaterHeal_0x08DC.bmp,44x44,88x88,0
+0x08DD,gump,Magery,ui_spell_4_Lightning,stock gump 0x08DD (spell icon),UI/UI_MagicSpells/ui_spell_4_Lightning_0x08DD.bmp,44x44,88x88,0
+0x08DE,gump,Magery,ui_spell_4_ManaDrain,stock gump 0x08DE (spell icon),UI/UI_MagicSpells/ui_spell_4_ManaDrain_0x08DE.bmp,44x44,88x88,0
+0x08DF,gump,Magery,ui_spell_4_Recall,stock gump 0x08DF (spell icon),UI/UI_MagicSpells/ui_spell_4_Recall_0x08DF.bmp,44x44,88x88,0
+0x08E0,gump,Magery,ui_spell_5_BladeSpirits,stock gump 0x08E0 (spell icon),UI/UI_MagicSpells/ui_spell_5_BladeSpirits_0x08E0.bmp,44x44,88x88,0
+0x08E1,gump,Magery,ui_spell_5_DispelField,stock gump 0x08E1 (spell icon),UI/UI_MagicSpells/ui_spell_5_DispelField_0x08E1.bmp,44x44,88x88,0
+0x08E2,gump,Magery,ui_spell_5_Incognito,stock gump 0x08E2 (spell icon),UI/UI_MagicSpells/ui_spell_5_Incognito_0x08E2.bmp,44x44,88x88,0
+0x08E3,gump,Magery,ui_spell_5_MagicReflect,stock gump 0x08E3 (spell icon),UI/UI_MagicSpells/ui_spell_5_MagicReflect_0x08E3.bmp,44x44,88x88,0
+0x08E4,gump,Magery,ui_spell_5_MindBlast,stock gump 0x08E4 (spell icon),UI/UI_MagicSpells/ui_spell_5_MindBlast_0x08E4.bmp,44x44,88x88,0
+0x08E5,gump,Magery,ui_spell_5_Paralyze,stock gump 0x08E5 (spell icon),UI/UI_MagicSpells/ui_spell_5_Paralyze_0x08E5.bmp,44x44,88x88,0
+0x08E6,gump,Magery,ui_spell_5_PoisonField,stock gump 0x08E6 (spell icon),UI/UI_MagicSpells/ui_spell_5_PoisonField_0x08E6.bmp,44x44,88x88,0
+0x08E7,gump,Magery,ui_spell_5_SummonCreature,stock gump 0x08E7 (spell icon),UI/UI_MagicSpells/ui_spell_5_SummonCreature_0x08E7.bmp,44x44,88x88,0
+0x08E8,gump,Magery,ui_spell_6_Dispel,stock gump 0x08E8 (spell icon),UI/UI_MagicSpells/ui_spell_6_Dispel_0x08E8.bmp,44x44,88x88,0
+0x08E9,gump,Magery,ui_spell_6_EnergyBolt,stock gump 0x08E9 (spell icon),UI/UI_MagicSpells/ui_spell_6_EnergyBolt_0x08E9.bmp,44x44,88x88,0
+0x08EA,gump,Magery,ui_spell_6_Explosion,stock gump 0x08EA (spell icon),UI/UI_MagicSpells/ui_spell_6_Explosion_0x08EA.bmp,44x44,88x88,0
+0x08EB,gump,Magery,ui_spell_6_Invisibility,stock gump 0x08EB (spell icon),UI/UI_MagicSpells/ui_spell_6_Invisibility_0x08EB.bmp,44x44,88x88,0
+0x08EC,gump,Magery,ui_spell_6_Mark,stock gump 0x08EC (spell icon),UI/UI_MagicSpells/ui_spell_6_Mark_0x08EC.bmp,44x44,88x88,0
+0x08ED,gump,Magery,ui_spell_6_MassCurse,stock gump 0x08ED (spell icon),UI/UI_MagicSpells/ui_spell_6_MassCurse_0x08ED.bmp,44x44,88x88,0
+0x08EE,gump,Magery,ui_spell_6_ParalyzeField,stock gump 0x08EE (spell icon),UI/UI_MagicSpells/ui_spell_6_ParalyzeField_0x08EE.bmp,44x44,88x88,0
+0x08EF,gump,Magery,ui_spell_6_Reveal,stock gump 0x08EF (spell icon),UI/UI_MagicSpells/ui_spell_6_Reveal_0x08EF.bmp,44x44,88x88,0
+0x08F0,gump,Magery,ui_spell_7_ChainLightning,stock gump 0x08F0 (spell icon),UI/UI_MagicSpells/ui_spell_7_ChainLightning_0x08F0.bmp,44x44,88x88,0
+0x08F1,gump,Magery,ui_spell_7_EnergyField,stock gump 0x08F1 (spell icon),UI/UI_MagicSpells/ui_spell_7_EnergyField_0x08F1.bmp,44x44,88x88,0
+0x08F2,gump,Magery,ui_spell_7_Flamestrike,stock gump 0x08F2 (spell icon),UI/UI_MagicSpells/ui_spell_7_Flamestrike_0x08F2.bmp,44x44,88x88,0
+0x08F3,gump,Magery,ui_spell_7_GateTravel,stock gump 0x08F3 (spell icon),UI/UI_MagicSpells/ui_spell_7_GateTravel_0x08F3.bmp,44x44,88x88,0
+0x08F4,gump,Magery,ui_spell_7_ManaVampire,stock gump 0x08F4 (spell icon),UI/UI_MagicSpells/ui_spell_7_ManaVampire_0x08F4.bmp,44x44,88x88,0
+0x08F5,gump,Magery,ui_spell_7_MassDispel,stock gump 0x08F5 (spell icon),UI/UI_MagicSpells/ui_spell_7_MassDispel_0x08F5.bmp,44x44,88x88,0
+0x08F6,gump,Magery,ui_spell_7_MeteorSwarm,stock gump 0x08F6 (spell icon),UI/UI_MagicSpells/ui_spell_7_MeteorSwarm_0x08F6.bmp,44x44,88x88,0
+0x08F7,gump,Magery,ui_spell_7_Polymorph,stock gump 0x08F7 (spell icon),UI/UI_MagicSpells/ui_spell_7_Polymorph_0x08F7.bmp,44x44,88x88,0
+0x08F8,gump,Magery,ui_spell_8_Earthquake,stock gump 0x08F8 (spell icon),UI/UI_MagicSpells/ui_spell_8_Earthquake_0x08F8.bmp,44x44,88x88,0
+0x08F9,gump,Magery,ui_spell_8_EnergyVortex,stock gump 0x08F9 (spell icon),UI/UI_MagicSpells/ui_spell_8_EnergyVortex_0x08F9.bmp,44x44,88x88,0
+0x08FA,gump,Magery,ui_spell_8_Resurrection,stock gump 0x08FA (spell icon),UI/UI_MagicSpells/ui_spell_8_Resurrection_0x08FA.bmp,44x44,88x88,0
+0x08FB,gump,Magery,ui_spell_8_SummonAirElemental,stock gump 0x08FB (spell icon),UI/UI_MagicSpells/ui_spell_8_SummonAirElemental_0x08FB.bmp,44x44,88x88,0
+0x08FC,gump,Magery,ui_spell_8_SummonDaemon,stock gump 0x08FC (spell icon),UI/UI_MagicSpells/ui_spell_8_SummonDaemon_0x08FC.bmp,44x44,88x88,0
+0x08FD,gump,Magery,ui_spell_8_SummonEarthElemental,stock gump 0x08FD (spell icon),UI/UI_MagicSpells/ui_spell_8_SummonEarthElemental_0x08FD.bmp,44x44,88x88,0
+0x08FE,gump,Magery,ui_spell_8_SummonFireElemental,stock gump 0x08FE (spell icon),UI/UI_MagicSpells/ui_spell_8_SummonFireElemental_0x08FE.bmp,44x44,88x88,0
+0x08FF,gump,Magery,ui_spell_8_SummonWaterElemental,stock gump 0x08FF (spell icon),UI/UI_MagicSpells/ui_spell_8_SummonWaterElemental_0x08FF.bmp,44x44,88x88,0
+0x5000,gump,Necromancy,ui_necro_spell_AnimateDead,stock gump 0x5000 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_AnimateDead_0x5000.bmp,44x44,88x88,0
+0x5001,gump,Necromancy,ui_necro_spell_BloodOath,stock gump 0x5001 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_BloodOath_0x5001.bmp,44x44,88x88,0
+0x5002,gump,Necromancy,ui_necro_spell_CorpseSkin,stock gump 0x5002 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_CorpseSkin_0x5002.bmp,44x44,88x88,0
+0x5003,gump,Necromancy,ui_necro_spell_CurseWeapon,stock gump 0x5003 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_CurseWeapon_0x5003.bmp,44x44,88x88,0
+0x5004,gump,Necromancy,ui_necro_spell_EvilOmen,stock gump 0x5004 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_EvilOmen_0x5004.bmp,44x44,88x88,0
+0x5010,gump,Necromancy,ui_necro_spell_Exorcism,stock gump 0x5010 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_Exorcism_0x5010.bmp,44x44,88x88,0
+0x5005,gump,Necromancy,ui_necro_spell_HorrificBeast,stock gump 0x5005 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_HorrificBeast_0x5005.bmp,44x44,88x88,0
+0x5006,gump,Necromancy,ui_necro_spell_LichForm,stock gump 0x5006 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_LichForm_0x5006.bmp,44x44,88x88,0
+0x5007,gump,Necromancy,ui_necro_spell_MindRot,stock gump 0x5007 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_MindRot_0x5007.bmp,44x44,88x88,0
+0x5008,gump,Necromancy,ui_necro_spell_PainSpike,stock gump 0x5008 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_PainSpike_0x5008.bmp,44x44,88x88,0
+0x5009,gump,Necromancy,ui_necro_spell_PoisonStrike,stock gump 0x5009 (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_PoisonStrike_0x5009.bmp,44x44,88x88,0
+0x500A,gump,Necromancy,ui_necro_spell_Strangle,stock gump 0x500A (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_Strangle_0x500A.bmp,44x44,88x88,0
+0x500B,gump,Necromancy,ui_necro_spell_SummonFamiliar,stock gump 0x500B (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_SummonFamiliar_0x500B.bmp,44x44,88x88,0
+0x500C,gump,Necromancy,ui_necro_spell_VampiricEmbrace,stock gump 0x500C (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_VampiricEmbrace_0x500C.bmp,44x44,88x88,0
+0x500D,gump,Necromancy,ui_necro_spell_VengefulSpirit,stock gump 0x500D (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_VengefulSpirit_0x500D.bmp,44x44,88x88,0
+0x500E,gump,Necromancy,ui_necro_spell_Wither,stock gump 0x500E (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_Wither_0x500E.bmp,44x44,88x88,0
+0x500F,gump,Necromancy,ui_necro_spell_WraithForm,stock gump 0x500F (spell icon),UI/UI_SpellsNecromancy/ui_necro_spell_WraithForm_0x500F.bmp,44x44,88x88,0
+0x5100,gump,Chivalry,ui_chivalry_spell_CleansebyFire,stock gump 0x5100 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_CleansebyFire_0x5100.bmp,44x44,88x88,0
+0x5101,gump,Chivalry,ui_chivalry_spell_CloseWounds,stock gump 0x5101 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_CloseWounds_0x5101.bmp,44x44,88x88,0
+0x5102,gump,Chivalry,ui_chivalry_spell_ConsecrateWeapon,stock gump 0x5102 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_ConsecrateWeapon_0x5102.bmp,44x44,88x88,0
+0x5108,gump,Chivalry,ui_chivalry_spell_DispelEvil,stock gump 0x5108 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_DispelEvil_0x5108.bmp,44x44,88x88,0
+0x5104,gump,Chivalry,ui_chivalry_spell_DivineFury,stock gump 0x5104 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_DivineFury_0x5104.bmp,44x44,88x88,0
+0x5105,gump,Chivalry,ui_chivalry_spell_EnemyofOne,stock gump 0x5105 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_EnemyofOne_0x5105.bmp,44x44,88x88,0
+0x5106,gump,Chivalry,ui_chivalry_spell_HolyLight,stock gump 0x5106 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_HolyLight_0x5106.bmp,44x44,88x88,0
+0x5107,gump,Chivalry,ui_chivalry_spell_NobleSacrifice,stock gump 0x5107 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_NobleSacrifice_0x5107.bmp,44x44,88x88,0
+0x5103,gump,Chivalry,ui_chivalry_spell_RemoveCurse,stock gump 0x5103 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_RemoveCurse_0x5103.bmp,44x44,88x88,0
+0x5109,gump,Chivalry,ui_chivalry_spell_SacredJourney,stock gump 0x5109 (spell icon),UI/UI_SpellsChivalry/ui_chivalry_spell_SacredJourney_0x5109.bmp,44x44,88x88,0
+0x5401,gump,Bushido,ui_spell_bushido_Confidence,stock gump 0x5401 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_Confidence_0x5401.bmp,70x70,140x140,0
+0x5421,gump,Bushido,ui_spell_bushido_Confidence,stock gump 0x5421 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_Confidence_0x5421.bmp,44x44,88x88,0
+0x5403,gump,Bushido,ui_spell_bushido_CounterAttack,stock gump 0x5403 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_CounterAttack_0x5403.bmp,70x70,140x140,0
+0x5423,gump,Bushido,ui_spell_bushido_CounterAttack,stock gump 0x5423 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_CounterAttack_0x5423.bmp,44x44,88x88,0
+0x5402,gump,Bushido,ui_spell_bushido_Evasion,stock gump 0x5402 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_Evasion_0x5402.bmp,70x70,140x140,0
+0x5422,gump,Bushido,ui_spell_bushido_Evasion,stock gump 0x5422 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_Evasion_0x5422.bmp,44x44,88x88,0
+0x5400,gump,Bushido,ui_spell_bushido_HonorableExecution,stock gump 0x5400 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_HonorableExecution_0x5400.bmp,70x70,140x140,0
+0x5420,gump,Bushido,ui_spell_bushido_HonorableExecution,stock gump 0x5420 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_HonorableExecution_0x5420.bmp,44x44,88x88,0
+0x5404,gump,Bushido,ui_spell_bushido_LightningStrike,stock gump 0x5404 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_LightningStrike_0x5404.bmp,70x70,140x140,0
+0x5424,gump,Bushido,ui_spell_bushido_LightningStrike,stock gump 0x5424 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_LightningStrike_0x5424.bmp,44x44,88x88,0
+0x5405,gump,Bushido,ui_spell_bushido_MomentumStrike,stock gump 0x5405 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_MomentumStrike_0x5405.bmp,70x70,140x140,0
+0x5425,gump,Bushido,ui_spell_bushido_MomentumStrike,stock gump 0x5425 (spell icon),UI/UI_SpellsBushido/ui_spell_bushido_MomentumStrike_0x5425.bmp,44x44,88x88,0
+0x5302,gump,Ninjitsu,ui_spell_ninjitsu_AnimalForm,stock gump 0x5302 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_AnimalForm_0x5302.bmp,70x70,140x140,0
+0x5322,gump,Ninjitsu,ui_spell_ninjitsu_AnimalForm,stock gump 0x5322 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_AnimalForm_0x5322.bmp,44x44,88x88,0
+0x5305,gump,Ninjitsu,ui_spell_ninjitsu_Backstab,stock gump 0x5305 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_Backstab_0x5305.bmp,70x70,140x140,0
+0x5325,gump,Ninjitsu,ui_spell_ninjitsu_Backstab,stock gump 0x5325 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_Backstab_0x5325.bmp,44x44,88x88,0
+0x5301,gump,Ninjitsu,ui_spell_ninjitsu_DeathStrike,stock gump 0x5301 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_DeathStrike_0x5301.bmp,70x70,140x140,0
+0x5321,gump,Ninjitsu,ui_spell_ninjitsu_DeathStrike,stock gump 0x5321 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_DeathStrike_0x5321.bmp,44x44,88x88,0
+0x5300,gump,Ninjitsu,ui_spell_ninjitsu_FocusAttack,stock gump 0x5300 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_FocusAttack_0x5300.bmp,70x70,140x140,0
+0x5320,gump,Ninjitsu,ui_spell_ninjitsu_FocusAttack,stock gump 0x5320 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_FocusAttack_0x5320.bmp,44x44,88x88,0
+0x5303,gump,Ninjitsu,ui_spell_ninjitsu_KiAttack,stock gump 0x5303 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_KiAttack_0x5303.bmp,70x70,140x140,0
+0x5323,gump,Ninjitsu,ui_spell_ninjitsu_KiAttack,stock gump 0x5323 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_KiAttack_0x5323.bmp,44x44,88x88,0
+0x5307,gump,Ninjitsu,ui_spell_ninjitsu_MirrorImage,stock gump 0x5307 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_MirrorImage_0x5307.bmp,70x70,140x140,0
+0x5327,gump,Ninjitsu,ui_spell_ninjitsu_MirrorImage,stock gump 0x5327 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_MirrorImage_0x5327.bmp,44x44,88x88,0
+0x5306,gump,Ninjitsu,ui_spell_ninjitsu_ShadowJump,stock gump 0x5306 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_ShadowJump_0x5306.bmp,70x70,140x140,0
+0x5326,gump,Ninjitsu,ui_spell_ninjitsu_ShadowJump,stock gump 0x5326 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_ShadowJump_0x5326.bmp,44x44,88x88,0
+0x5304,gump,Ninjitsu,ui_spell_ninjitsu_SurpriseAttack,stock gump 0x5304 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_SurpriseAttack_0x5304.bmp,70x70,140x140,0
+0x5324,gump,Ninjitsu,ui_spell_ninjitsu_SurpriseAttack,stock gump 0x5324 (spell icon),UI/UI_SpellsNinjitsu/ui_spell_ninjitsu_SurpriseAttack_0x5324.bmp,44x44,88x88,0
+0x59D8,gump,Spellweaving,ui_spell_weaving_ArcaneCircle,stock gump 0x59D8 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_ArcaneCircle_0x59D8.bmp,44x44,88x88,0
+0x59E7,gump,Spellweaving,ui_spell_weaving_ArcaneEmpowerment,stock gump 0x59E7 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_ArcaneEmpowerment_0x59E7.bmp,44x44,88x88,0
+0x59DB,gump,Spellweaving,ui_spell_weaving_Attunement,stock gump 0x59DB (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_Attunement_0x59DB.bmp,44x44,88x88,0
+0x59E3,gump,Spellweaving,ui_spell_weaving_DryadAllure,stock gump 0x59E3 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_DryadAllure_0x59E3.bmp,44x44,88x88,0
+0x59E2,gump,Spellweaving,ui_spell_weaving_EssenceOfWind,stock gump 0x59E2 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_EssenceOfWind_0x59E2.bmp,44x44,88x88,0
+0x59E4,gump,Spellweaving,ui_spell_weaving_EtherealVoyage,stock gump 0x59E4 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_EtherealVoyage_0x59E4.bmp,44x44,88x88,0
+0x59E6,gump,Spellweaving,ui_spell_weaving_GiftOfLife,stock gump 0x59E6 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_GiftOfLife_0x59E6.bmp,44x44,88x88,0
+0x59D9,gump,Spellweaving,ui_spell_weaving_GiftOfRenewal,stock gump 0x59D9 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_GiftOfRenewal_0x59D9.bmp,44x44,88x88,0
+0x59DA,gump,Spellweaving,ui_spell_weaving_ImmolatingWeapon,stock gump 0x59DA (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_ImmolatingWeapon_0x59DA.bmp,44x44,88x88,0
+0x59DD,gump,Spellweaving,ui_spell_weaving_NaturesFury,stock gump 0x59DD (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_NaturesFury_0x59DD.bmp,44x44,88x88,0
+0x59E0,gump,Spellweaving,ui_spell_weaving_ReaperForm,stock gump 0x59E0 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_ReaperForm_0x59E0.bmp,44x44,88x88,0
+0x59DE,gump,Spellweaving,ui_spell_weaving_SummonFey,stock gump 0x59DE (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_SummonFey_0x59DE.bmp,44x44,88x88,0
+0x59DF,gump,Spellweaving,ui_spell_weaving_SummonFiend,stock gump 0x59DF (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_SummonFiend_0x59DF.bmp,44x44,88x88,0
+0x59DC,gump,Spellweaving,ui_spell_weaving_Thunderstorm,stock gump 0x59DC (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_Thunderstorm_0x59DC.bmp,44x44,88x88,0
+0x59E1,gump,Spellweaving,ui_spell_weaving_Wildfire,stock gump 0x59E1 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_Wildfire_0x59E1.bmp,44x44,88x88,0
+0x59E5,gump,Spellweaving,ui_spell_weaving_WordOfDeath,stock gump 0x59E5 (spell icon),UI/UI_SpellsWeaving/ui_spell_weaving_WordOfDeath_0x59E5.bmp,44x44,88x88,0
+0x5DC6,gump,Mysticism,ui_spell_mysticism_AnimatedWeapon,stock gump 0x5DC6 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_AnimatedWeapon_0x5DC6.bmp,44x44,88x88,0
+0x5DCB,gump,Mysticism,ui_spell_mysticism_Bombard,stock gump 0x5DCB (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_Bombard_0x5DCB.bmp,44x44,88x88,0
+0x5DCA,gump,Mysticism,ui_spell_mysticism_CleansingWinds,stock gump 0x5DCA (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_CleansingWinds_0x5DCA.bmp,44x44,88x88,0
+0x5DC5,gump,Mysticism,ui_spell_mysticism_EagleStrike,stock gump 0x5DC5 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_EagleStrike_0x5DC5.bmp,44x44,88x88,0
+0x5DC3,gump,Mysticism,ui_spell_mysticism_Enchant,stock gump 0x5DC3 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_Enchant_0x5DC3.bmp,44x44,88x88,0
+0x5DCD,gump,Mysticism,ui_spell_mysticism_HailStorm,stock gump 0x5DCD (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_HailStorm_0x5DCD.bmp,44x44,88x88,0
+0x5DC1,gump,Mysticism,ui_spell_mysticism_HealingStone,stock gump 0x5DC1 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_HealingStone_0x5DC1.bmp,44x44,88x88,0
+0x5DC9,gump,Mysticism,ui_spell_mysticism_MassSleep,stock gump 0x5DC9 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_MassSleep_0x5DC9.bmp,44x44,88x88,0
+0x5DC0,gump,Mysticism,ui_spell_mysticism_NetherBolt,stock gump 0x5DC0 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_NetherBolt_0x5DC0.bmp,44x44,88x88,0
+0x5DCE,gump,Mysticism,ui_spell_mysticism_NetherCyclone,stock gump 0x5DCE (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_NetherCyclone_0x5DCE.bmp,44x44,88x88,0
+0x5DC2,gump,Mysticism,ui_spell_mysticism_PurgeMagic,stock gump 0x5DC2 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_PurgeMagic_0x5DC2.bmp,44x44,88x88,0
+0x5DCF,gump,Mysticism,ui_spell_mysticism_RisingColossus,stock gump 0x5DCF (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_RisingColossus_0x5DCF.bmp,44x44,88x88,0
+0x5DC4,gump,Mysticism,ui_spell_mysticism_Sleep,stock gump 0x5DC4 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_Sleep_0x5DC4.bmp,44x44,88x88,0
+0x5DCC,gump,Mysticism,ui_spell_mysticism_SpellPlague,stock gump 0x5DCC (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_SpellPlague_0x5DCC.bmp,44x44,88x88,0
+0x5DC8,gump,Mysticism,ui_spell_mysticism_SpellTrigger,stock gump 0x5DC8 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_SpellTrigger_0x5DC8.bmp,44x44,88x88,0
+0x5DC7,gump,Mysticism,ui_spell_mysticism_StoneForm,stock gump 0x5DC7 (spell icon),UI/UI_SpellsMysticism/ui_spell_mysticism_StoneForm_0x5DC7.bmp,44x44,88x88,0
