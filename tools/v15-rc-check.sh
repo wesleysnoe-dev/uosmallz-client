@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
 # v15 release-candidate check for the UO Smallz client repo. Read-only on the repo; writes only to --out.
 #   tools/v15-rc-check.sh [--expect-version 15] [--base 3428c254] [--out DIR] [--release-dir DIR] [--strict]
-# Env: UO_DATA (stock 7.0.23.1 folder: art/tiledata/statics, default /workspace/uo-data/7.0.23.1)
-#      SA_STATICS (folder with the shard's classic Felucca staidx0/statics0, default /tmp/m; falls back to UO_DATA = stricter)
-#      CORVAE_TABLE (corvae-art-test id-table.json, default /workspace/uo-offline-changes/corvae-art-test/id-table.json)
-#      HD_ZIP (UOSmallz-HDArt-2x.zip, default /workspace/hd-art-upload/UOSmallz-HDArt-2x.zip)
+#                         [--uo-data DIR] [--sa-statics DIR] [--corvae-table FILE]
+# Paths (flag, else env var, else default; nothing is hard-coded to one machine):
+#   --uo-data / UO_DATA            stock 7.0.23.1 folder (art/tiledata/statics/gumps); default <repo>/../uo-data/7.0.23.1.
+#                                  Missing = the id and art checks that need stock data WARN and are skipped.
+#   --sa-statics / SA_STATICS      folder with the shard's classic Felucca staidx0/statics0; default none = the modern map0
+#                                  in UO_DATA is used instead (stricter, WARN).
+#   --corvae-table / CORVAE_TABLE  a corvae id-table.json; only used when the tree has no ExternalImages/corvae-art-ids.csv.
+#   --out                          output folder for SHA256SUMS; default <repo>/../v15-rc-out (outside the repo).
+# Checks: 1 version, 2 installer/launcher/syntax, 3 ids and collisions, 3b Corvae art (v16+: every PNG exactly 2x the stock
+# size, README/NOTICE credits, license files), 4 SHA256SUMS.
 # Exit 0 = no FAIL, 1 = at least one FAIL. WARN/SKIP never fail unless --strict.
 set -u
-EXPECT=15; BASE=3428c254; OUT=""; RELDIR=""; STRICT=0
+EXPECT=15; BASE=3428c254; OUT=""; RELDIR=""; STRICT=0; UO_DATA="${UO_DATA:-}"; SA_STATICS="${SA_STATICS:-}"; CORVAE_TABLE="${CORVAE_TABLE:-}"
 while [ $# -gt 0 ]; do case "$1" in
   --expect-version) EXPECT="$2"; shift 2;; --base) BASE="$2"; shift 2;; --out) OUT="$2"; shift 2;;
-  --release-dir) RELDIR="$2"; shift 2;; --strict) STRICT=1; shift;; -h|--help) sed -n 2,11p "$0"; exit 0;;
+  --release-dir) RELDIR="$2"; shift 2;; --strict) STRICT=1; shift;;
+  --uo-data) UO_DATA="$2"; shift 2;; --sa-statics) SA_STATICS="$2"; shift 2;; --corvae-table) CORVAE_TABLE="$2"; shift 2;;
+  -h|--help) sed -n 2,14p "$0"; exit 0;;
   *) echo "unknown arg $1"; exit 2;; esac; done
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 2
 OUT="${OUT:-$ROOT/../v15-rc-out}"; mkdir -p "$OUT"
-export UO_DATA="${UO_DATA:-/workspace/uo-data/7.0.23.1}" SA_STATICS="${SA_STATICS:-/tmp/m}" \
-  CORVAE_TABLE="${CORVAE_TABLE:-/workspace/uo-offline-changes/corvae-art-test/id-table.json}" \
-  HD_ZIP="${HD_ZIP:-/workspace/hd-art-upload/UOSmallz-HDArt-2x.zip}" V15_BASE="$BASE" V15_OUT="$OUT" V15_STRICT="$STRICT"
+export UO_DATA="${UO_DATA:-$ROOT/../uo-data/7.0.23.1}" SA_STATICS="${SA_STATICS:-}" CORVAE_TABLE="${CORVAE_TABLE:-}" \
+  V15_BASE="$BASE" V15_OUT="$OUT" V15_STRICT="$STRICT"
 FAILS=0; WARNS=0
 pass() { echo "PASS  $*"; }; fail() { echo "FAIL  $*"; FAILS=$((FAILS+1)); }
 warn() { echo "WARN  $*"; WARNS=$((WARNS+1)); }; skip() { echo "SKIP  $*"; }
@@ -60,7 +67,7 @@ PY
 
 echo "-- 3. ids: tiledata overrides, ExternalImages, collisions, corvae"
 python3 - <<'PY'
-import os, re, sys, csv, json, glob, struct, subprocess, zipfile, io
+import os, re, sys, csv, json, glob, struct
 BASE = os.environ['V15_BASE']; UO = os.environ['UO_DATA']; SA = os.environ['SA_STATICS']
 fails = warns = 0
 def P(t, m):
@@ -112,7 +119,7 @@ ct = os.path.join(EI, 'corvae-art-ids.csv')
 if os.path.exists(ct):
     for r in csv.DictReader(open(ct)): corvae[r['kind']].add(pid(r['id']))
     csrc = ct
-elif os.path.exists(os.environ['CORVAE_TABLE']):
+elif os.environ['CORVAE_TABLE'] and os.path.exists(os.environ['CORVAE_TABLE']):
     for r in json.load(open(os.environ['CORVAE_TABLE'])):
         if r['file']: corvae[r['kind']].add(r['dec'])
     csrc = os.environ['CORVAE_TABLE']
@@ -130,7 +137,7 @@ if csrc and csrc.endswith('.json'):
 # castle kit reserved
 castle_art = set(range(0xFE00, 0xFE0E)); castle_gump = set(range(0xB700, 0xB800))
 # --- art/tiledata ids vs stock, HD, statics
-if not have_stock: P('WARN', f'stock data not found in {UO}: art/tiledata/statics checks skipped')
+if not have_stock: P('WARN', f'stock data not found in {UO} (set --uo-data / UO_DATA): art/tiledata/statics checks skipped')
 else:
     idx = open(f'{UO}/artidx.mul', 'rb').read(); tdd = open(f'{UO}/tiledata.mul', 'rb').read(); TDB = 512 * (4 + 32 * 30)
     def art_entry(i):
@@ -157,8 +164,8 @@ else:
             for t in struct.iter_unpack('<HBBbH', buf): s[t[0]] = s.get(t[0], 0) + 1
         return s
     served = {}
-    sa = SA if os.path.exists(f'{SA}/statics0.mul') else UO
-    if sa == UO: P('WARN', f'classic Felucca statics not found in {SA}; using the modern map0 (stricter)')
+    sa = SA if SA and os.path.exists(f'{SA}/statics0.mul') else UO
+    if sa == UO: P('WARN', f'classic Felucca statics not found (SA_STATICS={SA or "unset"}); using the modern map0 in UO_DATA (stricter)')
     for lab, base, n in (('Felucca', sa, 0), ('Ilshenar', UO, 2), ('Malas', UO, 3)):
         s = statics(base, n)
         if s is None: P('WARN', f'no {lab} statics'); continue
@@ -169,12 +176,6 @@ else:
         if lk < 0 or ln <= 0: continue
         d.seek(lk); buf = d.read(ln); sz = 16 if ln % 16 == 0 else 12
         for k in range(0, ln - sz + 1, sz): served.setdefault(struct.unpack_from('<H', buf, k)[0], {})['multi'] = 1
-    hdart = set()
-    hz = os.environ['HD_ZIP']
-    if os.path.exists(hz):
-        for nme in zipfile.ZipFile(hz).namelist():
-            m = re.match(r'art/0x([0-9A-Fa-f]+)\.png$', nme)
-            if m: hdart.add(int(m.group(1), 16))
     # new item ids = art PNGs and tiledata rows that are not a deliberate corvae replacement
     new_ids = sorted(own_art)
     bad = 0
@@ -219,6 +220,74 @@ eqg = {50000 + a for a in EQ} | {60000 + a for a in EQ}
 og = sorted(eqg & set(gump_ids))
 P('PASS', f'EquipConv paperdoll gump ids ({len(eqg)}) all have art: {all(i in gump_ids for i in eqg)}; overlap with castle/corvae gumps: {sorted(set(hx(i) for i in eqg) & set(hx(i) for i in castle_gump | corvae["gump"])) or "none"}')
 print(f'SUMMARY ids: {fails} fail, {warns} warn')
+sys.exit(1 if fails else 0)
+PY
+[ $? -ne 0 ] && FAILS=$((FAILS+1))
+
+echo "-- 3b. corvae art: PNG sizes, credits, license files"
+python3 - <<'PY'
+import os, re, sys, csv, struct
+UO = os.environ['UO_DATA']
+EI = 'client-files/ExternalImages'
+ct = os.path.join(EI, 'corvae-art-ids.csv')
+fails = warns = 0
+def P(t, m):
+    global fails, warns
+    print(f'{t:<5} {m}')
+    if t == 'FAIL': fails += 1
+    if t == 'WARN': warns += 1
+if not os.path.exists(ct):
+    print('SKIP  no ExternalImages/corvae-art-ids.csv in this tree: no corvae art to check')
+    sys.exit(0)
+hx = lambda n: f'0x{n:04X}'
+pid = lambda s: int(s.strip(), 16) if s.strip().lower().startswith('0x') else int(s.strip())
+def png_size(p):
+    with open(p, 'rb') as fh: h = fh.read(24)
+    return struct.unpack('>II', h[16:24]) if h[:8] == b'\x89PNG\r\n\x1a\n' and h[12:16] == b'IHDR' else None
+rows = list(csv.DictReader(open(ct, encoding='utf-8-sig')))
+# stock sizes straight from the stock files, when present
+art_idx = os.path.join(UO, 'artidx.mul'); gump_idx = os.path.join(UO, 'gumpidx.mul')
+def stock_art(i):
+    d = open(art_idx, 'rb').read(); o = (0x4000 + i) * 12
+    if o + 12 > len(d): return None
+    lk, ln, _ = struct.unpack_from('<iii', d, o)
+    if lk < 0 or ln < 8: return None
+    with open(os.path.join(UO, 'art.mul'), 'rb') as fh: fh.seek(lk); _, w, h = struct.unpack('<iHH', fh.read(8))
+    return (w, h)
+def stock_gump(i):
+    d = open(gump_idx, 'rb').read(); o = i * 12
+    if o + 12 > len(d): return None
+    lk, ln, ex = struct.unpack_from('<iii', d, o)
+    return None if lk < 0 or ln <= 0 else ((ex >> 16) & 0xFFFF, ex & 0xFFFF)
+have_stock = all(os.path.exists(os.path.join(UO, n)) for n in ('artidx.mul', 'art.mul', 'gumpidx.mul'))
+if not have_stock: P('WARN', f'stock art/gump files not in {UO} (set --uo-data / UO_DATA): PNG sizes are checked against the sizes recorded in corvae-art-ids.csv only')
+missing = []; bad = []; checked = 0; vs_stock = 0
+for r in rows:
+    i = pid(r['id']); kind = r['kind']
+    f = os.path.join(EI, 'art' if kind == 'art' else 'gumps', f'0x{i:04X}.png')
+    if not os.path.exists(f): missing.append(f'{kind} {hx(i)}'); continue
+    sz = png_size(f)
+    if sz is None: bad.append(f'{kind} {hx(i)}: not a PNG'); continue
+    checked += 1
+    m = re.match(r'(\d+)x(\d+)$', r.get('stock_size', '').strip())
+    st = (int(m.group(1)), int(m.group(2))) if m else None
+    real = (stock_art if kind == 'art' else stock_gump)(i) if have_stock else None
+    if real:
+        vs_stock += 1
+        if st and st != real: bad.append(f'{kind} {hx(i)}: csv stock_size {st} but the stock file says {real}')
+        st = real
+    if st is None: bad.append(f'{kind} {hx(i)}: no stock size to compare with')
+    elif sz != (st[0] * 2, st[1] * 2): bad.append(f'{kind} {hx(i)}: PNG {sz[0]}x{sz[1]} is not exactly 2x stock {st[0]}x{st[1]}')
+P('FAIL' if missing else 'PASS', f'every id in corvae-art-ids.csv has its PNG ({len(rows)} rows): missing {missing[:8] or "none"}')
+P('FAIL' if bad else 'PASS', f'{checked} PNGs exactly 2x the stock size ({vs_stock} against the stock files, the rest against the csv): {bad[:8] or "no problems"}{" ... " + str(len(bad)) if len(bad) > 8 else ""}')
+# credits and license files
+for need in ('CORVAE-ART-LICENSE-CC0.txt', 'CORVAE-ART-NOTICE.txt'):
+    P('PASS' if os.path.exists(os.path.join(EI, need)) else 'FAIL', f'{EI}/{need} present')
+for doc in ('README.md', 'notices/NOTICE.txt'):
+    t = open(doc, encoding='utf-8', errors='ignore').read() if os.path.exists(doc) else ''
+    lack = [n for n in ('Jewele', 'Gaechti', 'Boothby', 'CorvaeOboro') if n not in t]
+    P('FAIL' if lack else 'PASS', f'{doc} credits CorvaeOboro, Jewele, Gaechti, Boothby: missing {lack or "none"}')
+print(f'SUMMARY art: {fails} fail, {warns} warn')
 sys.exit(1 if fails else 0)
 PY
 [ $? -ne 0 ] && FAILS=$((FAILS+1))
