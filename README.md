@@ -64,6 +64,12 @@ CASTLE ART, BANK DEPOSIT SAFE (v12)
   both facings so it can be turned. Nothing else changes; the tiledata rows
   for these ids are unchanged.
 
+CASTLE ART, MAGIC ITEM VAULT (v13)
+  v13 turns the Magic Item Vault into a Red Armoire with a crystal ball and
+  hat: new item art for 0xFE04 and 0xFE05 (ExternalImages\art), a new vault
+  header icon 0xB769 (ExternalImages\gumps) and updated TileData rows for
+  the two item ids (light and height). Nothing else changes.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most

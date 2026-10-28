@@ -4,8 +4,8 @@
 0xFE01,0x204040,255,0,0,0,0,8,12,storage shelf
 0xFE02,0x204040,255,0,0,0,0,8,3,resource stockpile
 0xFE03,0x204040,255,0,0,0,0,8,3,resource stockpile
-0xFE04,0x204040,255,0,0,0,0,15,4,magic item vault
-0xFE05,0x204040,255,0,0,0,0,15,4,magic item vault
+0xFE04,0x204040,255,0,0,0,0,7,8,magic item vault
+0xFE05,0x204040,255,0,0,0,0,7,8,magic item vault
 0xFE06,0x204040,255,0,0,0,0,15,4,bank deposit safe
 0xFE07,0x204040,255,0,0,0,0,15,4,bank deposit safe
 0xFE08,0x4000,2,0,0,0,0,10,1,treasure map tome
