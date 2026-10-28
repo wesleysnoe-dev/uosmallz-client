@@ -92,6 +92,25 @@ FACTION TABARDS (v14, item ids moved in v15)
   Server and client go together: the server moves existing tabards to the new ids at
   startup (uo-offline-dev ie-faction-tabards-migfix).
 
+CORVAEOBORO ART: SCROLLS, REAGENTS, SPELL ICONS (v16, test)
+  v16 swaps the look of 237 existing images for CorvaeOboro's CC0 art mods
+  (https://github.com/CorvaeOboro/ultima_online_mods): the 64 Magery scrolls
+  (item ids 0x1F2D-0x1F6C), 22 reagents (0x0F78-0x0F91) in ExternalImages\art, and
+  151 spell icons of Magery, Necromancy, Chivalry, Bushido, Ninjitsu, Spellweaving
+  and Mysticism (gump ids 0x08C0-0x08FF, 0x5000-0x5010, 0x5100-0x5109,
+  0x5300-0x5327, 0x5400-0x5425, 0x59D8-0x59E7, 0x5DC0-0x5DCF) in
+  ExternalImages\gumps. Same ids as the stock art, so the server and tiledata are
+  untouched. Every PNG is exactly 2x the size of the stock image of its id (the mod's
+  1x pixels, each doubled), so patch 0003 treats it as an HD version and draws it at the
+  stock size: the same look with or without the HD art pack, and it wins over the
+  pack's own image for that id. Four stock reagent graphics (0x0F79, 0x0F7C, 0x0F7F,
+  0x0F8B) have no Corvae art and stay stock. Credit: art by CorvaeOboro (CC0 1.0); the
+  scrolls are based on ScrollsByJewele (Jewele) and ScrollsByCircle (Gaechti), and the
+  Magery spell icons on MoreColorSpells (Gaechti and Boothby), per CorvaeOboro's own
+  READMEs; CC0 covers CorvaeOboro's contribution only. Licence, credit and the id list
+  are in ExternalImages\CORVAE-ART-NOTICE.txt and corvae-art-ids.csv, and in
+  notices\NOTICE.txt. To go back, delete those PNGs (or install the previous client).
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
