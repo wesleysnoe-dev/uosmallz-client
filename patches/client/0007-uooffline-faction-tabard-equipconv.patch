@@ -1,0 +1,118 @@
+diff --git a/src/ClassicUO.Assets/AnimationsLoader.cs b/src/ClassicUO.Assets/AnimationsLoader.cs
+index 12ba549f2..99a2e85f3 100644
+--- a/src/ClassicUO.Assets/AnimationsLoader.cs
++++ b/src/ClassicUO.Assets/AnimationsLoader.cs
+@@ -536,6 +536,100 @@ namespace ClassicUO.Assets
+                     }
+                 }
+             }
++
++            // uo-offline (UO Smallz) 0007: the shard's own worn items (faction tabards) get their equipment
++            // conversion from EquipConv/*.csv beside TazUO.exe, so the player's Equipconv.def stays untouched.
++            ApplyUoOfflineEquipConv(System.IO.Path.Combine(AppContext.BaseDirectory, "EquipConv"));
++        }
++
++        // One line per conversion: body,itemAnimId,animGraphic,gump,hue  (numbers hex 0x.. or decimal; '#' comments).
++        //   body       the mobile's body graphic the line applies to (400/401 human, 605/606 elf, ...)
++        //   itemAnimId the item's tiledata AnimID (the shard's new tabard ids)
++        //   animGraphic the equipment animation to draw in the world (the stock surcoat's, 910)
++        //   gump       the paperdoll gump = id + 50000 (male) / + 60000 (female); 0 = itemAnimId, as Equipconv.def
++        //   hue        the colour the world animation is drawn in when the item has none (0 = none)
++        // Only the reserved shard range of item anim ids is accepted (Equipconv.def entries are never overridden);
++        // a bad line is logged (file and line) and skipped; nothing here throws.
++        public const int UoOfflineAnimFirst = 1220, UoOfflineAnimLast = 1233;
++
++        private void ApplyUoOfflineEquipConv(string dir)
++        {
++            string[] files;
++            try
++            {
++                if (!Directory.Exists(dir))
++                    return;
++                files = Directory.GetFiles(dir, "*.csv");
++                Array.Sort(files, StringComparer.Ordinal);
++            }
++            catch (Exception e)
++            {
++                ClassicUO.Utility.Logging.Log.Warn($"EquipConv overrides: cannot list {dir}: {e.Message}");
++                return;
++            }
++
++            foreach (string file in files)
++            {
++                string name = Path.GetFileName(file);
++                try
++                {
++                    string[] lines = File.ReadAllLines(file);
++                    int applied = 0, skipped = 0;
++                    for (int n = 0; n < lines.Length; n++)
++                    {
++                        string line = lines[n].Trim().TrimStart('\uFEFF');
++                        if (line.Length == 0 || line[0] == '#')
++                            continue;
++                        string why = ParseUoOfflineEquipConv(line, out ushort body, out ushort item, out EquipConvData data);
++                        if (why != null)
++                        {
++                            if (++skipped <= 20)
++                                ClassicUO.Utility.Logging.Log.Warn($"EquipConv overrides: {name} line {n + 1} skipped: {why}");
++                            continue;
++                        }
++                        if (!_equipConv.TryGetValue(body, out Dictionary<ushort, EquipConvData> dict))
++                            _equipConv[body] = dict = new Dictionary<ushort, EquipConvData>();
++                        dict[item] = data;
++                        applied++;
++                    }
++                    if (skipped > 20)
++                        ClassicUO.Utility.Logging.Log.Warn($"EquipConv overrides: {name}: {skipped - 20} more lines skipped");
++                    ClassicUO.Utility.Logging.Log.Trace($"EquipConv overrides: {name}: {applied} entries");
++                }
++                catch (Exception e)
++                {
++                    ClassicUO.Utility.Logging.Log.Warn($"EquipConv overrides: cannot read {name}: {e.Message}");
++                }
++            }
++        }
++
++        private static string ParseUoOfflineEquipConv(string line, out ushort body, out ushort item, out EquipConvData data)
++        {
++            body = 0;
++            item = 0;
++            data = default;
++            string[] f = line.Split(',');
++            if (f.Length < 5)
++                return $"{f.Length} fields, want 5";
++            string[] names = { "body", "itemAnimId", "animGraphic", "gump", "hue" };
++            var v = new ulong[5];
++            for (int i = 0; i < 5; i++)
++            {
++                string s = f[i].Trim();
++                bool ok = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
++                    ? ulong.TryParse(s.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out v[i])
++                    : ulong.TryParse(s, out v[i]);
++                if (!ok)
++                    return $"{names[i]} '{s}' is not a number";
++                if (v[i] > ushort.MaxValue)
++                    return $"{names[i]} {v[i]} is out of range (max {ushort.MaxValue})";
++            }
++            if (v[1] < UoOfflineAnimFirst || v[1] > UoOfflineAnimLast)
++                return $"itemAnimId {v[1]} is outside the reserved shard range {UoOfflineAnimFirst}-{UoOfflineAnimLast} (stock conversions are never overridden)";
++            body = (ushort)v[0];
++            item = (ushort)v[1];
++            data = new EquipConvData((ushort)v[2], (ushort)(v[3] == 0 ? v[1] : v[3]), (ushort)v[4]);
++            return null;
+         }
+ 
+         public void ProcessBodyConvDef(BodyConvFlags flags)
+diff --git a/src/ClassicUO.Assets/TileDataLoader.cs b/src/ClassicUO.Assets/TileDataLoader.cs
+index 43e29f351..e5865e48a 100644
+--- a/src/ClassicUO.Assets/TileDataLoader.cs
++++ b/src/ClassicUO.Assets/TileDataLoader.cs
+@@ -22,7 +22,7 @@ namespace ClassicUO.Assets
+         // decimal, flags hex or decimal; '#' comments). Only the reserved shard range is accepted; a bad line is
+         // logged (file and line) and skipped; a file that cannot be read is logged and skipped. Never throws:
+         // a broken or locked csv must not stop the client from starting.
+-        public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
++        public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE1F;
+         private const int MaxLineWarnings = 20;
+ 
+         private void ApplyOverrides(string dir)

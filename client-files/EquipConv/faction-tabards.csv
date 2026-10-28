@@ -1,0 +1,19 @@
+# UO Smallz faction tabards: body,itemAnimId,animGraphic,gump,hue   (client patch 0007)
+# body 400/401 human, 605/606 elf. animGraphic 910 = the stock surcoat animation drawn in the world; gump 0 = the itemAnimId (paperdoll gump 50000+id male, 60000+id female);
+# hue = the colour the surcoat animation takes in the world (the faction's primary hue; 0 = the white surcoat for True Britannians); the PNG art itself is hue 0
+400,1230,910,0,0
+401,1230,910,0,0
+605,1230,910,0,0
+606,1230,910,0,0
+400,1231,910,0,1325
+401,1231,910,0,1325
+605,1231,910,0,1325
+606,1231,910,0,1325
+400,1232,910,0,1645
+401,1232,910,0,1645
+605,1232,910,0,1645
+606,1232,910,0,1645
+400,1233,910,0,1109
+401,1233,910,0,1109
+605,1233,910,0,1109
+606,1233,910,0,1109
