@@ -1,10 +1,10 @@
 # UO Smallz faction tabards (uo-offline client-art-faction-tabards): id,flags,weight,layer,count,animId,hue,lightIndex,height,name
-# read by client patch 0005 (range widened to 0xFE1F by 0007); values = the stock surcoat 0x1FFD/0x1FFE with the faction's own animId
-0xFE10,0x404002,6,17,0,1230,0,12,1,faction tabard
-0xFE11,0x404002,6,17,0,1230,0,12,1,faction tabard
-0xFE12,0x404002,6,17,0,1231,0,12,1,faction tabard
-0xFE13,0x404002,6,17,0,1231,0,12,1,faction tabard
-0xFE14,0x404002,6,17,0,1232,0,12,1,faction tabard
-0xFE15,0x404002,6,17,0,1232,0,12,1,faction tabard
-0xFE16,0x404002,6,17,0,1233,0,12,1,faction tabard
-0xFE17,0x404002,6,17,0,1233,0,12,1,faction tabard
+# read by client patch 0005 (0007 adds the range 0x2F44-0x2F4B, blank placeholder ids of the stock tiledata, below 0x3FFF); values = the stock surcoat 0x1FFD/0x1FFE with the faction's own animId
+0x2F44,0x404002,6,17,0,1230,0,12,1,faction tabard
+0x2F45,0x404002,6,17,0,1230,0,12,1,faction tabard
+0x2F46,0x404002,6,17,0,1231,0,12,1,faction tabard
+0x2F47,0x404002,6,17,0,1231,0,12,1,faction tabard
+0x2F48,0x404002,6,17,0,1232,0,12,1,faction tabard
+0x2F49,0x404002,6,17,0,1232,0,12,1,faction tabard
+0x2F4A,0x404002,6,17,0,1233,0,12,1,faction tabard
+0x2F4B,0x404002,6,17,0,1233,0,12,1,faction tabard

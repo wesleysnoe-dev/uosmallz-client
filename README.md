@@ -70,18 +70,25 @@ CASTLE ART, MAGIC ITEM VAULT (v13)
   header icon 0xB769 (ExternalImages\gumps) and updated TileData rows for
   the two item ids (light and height). Nothing else changes.
 
-FACTION TABARDS (v14)
-  v14 adds the four faction tabards: item art for 0xFE10-0xFE17 (1x, two facings
-  per faction in ExternalImages\art), paperdoll gumps 0xC81E-0xC821 (male) and
-  0xEF2E-0xEF31 (female) in ExternalImages\gumps, tiledata rows for the new item
-  ids (TileData\faction-tabards.csv; patches/client/0005's id range now runs to
-  0xFE1F) and EquipConv\faction-tabards.csv, read by patches/client/0007: it adds
-  equipment conversions for the shard's tabard anim ids 1230-1233 (bodies human
-  and elf, male and female), so a worn tabard draws as the stock surcoat animation
-  in the world (in the faction's colour) and as its own gump on the paperdoll. The
-  player's Equipconv.def stays untouched. Bad lines are logged as "EquipConv
-  overrides: ..." and skipped. Until the shard turns uooffline.factionTabards on,
-  nothing shows these.
+FACTION TABARDS (v14, item ids moved in v15)
+  v14 added the four faction tabards: item art (1x, two facings per faction in
+  ExternalImages\art), paperdoll gumps 0xC81E-0xC821 (male) and 0xEF2E-0xEF31
+  (female) in ExternalImages\gumps, tiledata rows for the item ids
+  (TileData\faction-tabards.csv) and EquipConv\faction-tabards.csv, read by
+  patches/client/0007: it adds equipment conversions for the shard's tabard anim ids
+  1230-1233 (bodies human and elf, male and female), so a worn tabard draws as the
+  stock surcoat animation in the world (in the faction's colour) and as its own gump
+  on the paperdoll. The player's Equipconv.def stays untouched. Bad lines are logged
+  as "EquipConv overrides: ..." and skipped. Until the shard turns
+  uooffline.factionTabards on, nothing shows these.
+  v15 moves the item art from 0xFE10-0xFE17 to 0x2F44-0x2F4B (0xFE10 -> 0x2F44 ...
+  0xFE17 -> 0x2F4B): the server's 0x78 mobile packet masks a worn item's id with
+  0x7FFF, so 0xFE10 arrived as 0x7E10 (no art) and a worn tabard vanished after a gate.
+  0x2F44-0x2F4B are blank placeholder ids in the stock client data (below 0x3FFF, so
+  every item packet keeps them). patches/client/0005's tiledata override accepts
+  0xFE00-0xFE0D (castle) and, since 0007, 0x2F44-0x2F4B (tabards) and nothing between.
+  Anim ids and gumps are unchanged. Server and client go together: the server moves
+  existing tabards to the new ids at startup (uo-offline-dev ie-faction-tabards-migfix).
 
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile

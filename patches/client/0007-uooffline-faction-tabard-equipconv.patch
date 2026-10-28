@@ -104,15 +104,29 @@ index 12ba549f2..99a2e85f3 100644
  
          public void ProcessBodyConvDef(BodyConvFlags flags)
 diff --git a/src/ClassicUO.Assets/TileDataLoader.cs b/src/ClassicUO.Assets/TileDataLoader.cs
-index 43e29f351..e5865e48a 100644
+index 43e29f351..98fbcc067 100644
 --- a/src/ClassicUO.Assets/TileDataLoader.cs
 +++ b/src/ClassicUO.Assets/TileDataLoader.cs
-@@ -22,7 +22,7 @@ namespace ClassicUO.Assets
-         // decimal, flags hex or decimal; '#' comments). Only the reserved shard range is accepted; a bad line is
+@@ -23,6 +23,11 @@ namespace ClassicUO.Assets
          // logged (file and line) and skipped; a file that cannot be read is logged and skipped. Never throws:
          // a broken or locked csv must not stop the client from starting.
--        public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
-+        public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE1F;
+         public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
++        // The faction tabards' item art (client v15): 0x2F44-0x2F4B, in a run of blank placeholder ids of the stock tiledata
++        // (below 0x3FFF, which every item packet keeps). Only these ids, not the ids between them and 0xFE00.
++        public const uint TabardFirst = 0x2F44, TabardLast = 0x2F4B;
++        private static bool IsOverrideId(ulong id) =>
++            id >= OverrideFirst && id <= OverrideLast || id >= TabardFirst && id <= TabardLast;
          private const int MaxLineWarnings = 20;
  
          private void ApplyOverrides(string dir)
+@@ -93,8 +98,8 @@ namespace ClassicUO.Assets
+                 if (v[i] > max[i])
+                     return $"{names[i]} {v[i]} is out of range (max {max[i]})";
+             }
+-            if (v[0] < OverrideFirst || v[0] > OverrideLast)
+-                return $"id 0x{v[0]:X} is outside the reserved override range 0x{OverrideFirst:X}-0x{OverrideLast:X} (stock tiledata is never overridden)";
++            if (!IsOverrideId(v[0]))
++                return $"id 0x{v[0]:X} is outside the reserved override ranges 0x{OverrideFirst:X}-0x{OverrideLast:X} and 0x{TabardFirst:X}-0x{TabardLast:X} (stock tiledata is never overridden)";
+             if (v[0] >= (ulong)_staticData.Length)
+                 return $"id 0x{v[0]:X} is beyond the loaded tiledata ({_staticData.Length} statics)";
+             id = (uint)v[0];
