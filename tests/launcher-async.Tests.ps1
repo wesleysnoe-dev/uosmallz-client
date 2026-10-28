@@ -428,7 +428,10 @@ $script:ticks = New-Object Collections.ArrayList
 $script:cancelAfter = -1.0
 $script:clock = [Diagnostics.Stopwatch]::StartNew()
 function Show-Busy([string]$text) { $script:clock.Restart(); $script:ticks.Clear(); return [pscustomobject]@{ Tag = @{ Allow = $false } } }
+$script:throwAtTick = -1; $script:pumps = 0
+function Invoke-UiPump($form) { $script:pumps++ }
 function Update-Busy($form, $state) {
+    if ($script:throwAtTick -ge 0 -and $script:ticks.Count -ge $script:throwAtTick) { throw "the window broke" }
     [void]$script:ticks.Add(@{ T = $script:clock.Elapsed.TotalMilliseconds; Status = [string]$state.Status; Done = [long]$state.Done; Total = [long]$state.Total; CanCancel = [bool]$state.CanCancel })
     if ($script:cancelAfter -ge 0 -and $script:clock.Elapsed.TotalSeconds -ge $script:cancelAfter -and [bool]$state.CanCancel) { $state.Cancel = $true }
 }
@@ -615,6 +618,146 @@ $mf = Read-ClientManifest $sc.List
 $cachePre = @{}
 $res = Invoke-Background $sc.Root "Checking..." "Get-ChangedFiles" @($pp.Client, $mf, $cachePre)
 Check (@($res).Count -ge 3 -and $cachePre.Count -gt 100) "background scan: the hash workers run inside the runspace ($(@($res).Count) changed, $($cachePre.Count) cached)"
+Remove-Item $sc.Root -Recurse -Force
+
+
+# ---- QC 174 fixes ----
+# L1: a full-zip install forgets the hash cache (same size + mtime, other bytes, then a revert)
+$root = New-Root
+$pp = Get-Paths $root
+$mt = [DateTime]::SpecifyKind((Get-Date).AddDays(-5).Date.AddHours(10).AddMinutes(20), [DateTimeKind]::Local).ToUniversalTime()
+function Set-Old([string]$text) { $f = P $pp.Client "x.dll"; [IO.File]::WriteAllText($f, $text); [IO.File]::SetLastWriteTimeUtc($f, $mt) }
+Put (P $pp.Client "TazUO.exe") "exe"; [IO.File]::SetLastWriteTimeUtc((P $pp.Client "TazUO.exe"), $mt)
+Set-Old "AAAA"
+Write-Stamp $pp.Stamp "v1" ("a" * 64)
+function New-OneManifest([string]$xText) {
+    $x = Join-Path $root "m.tmp"; [IO.File]::WriteAllText($x, $xText); $e = Join-Path $root "e.tmp"; [IO.File]::WriteAllText($e, "exe")
+    $j = [ordered]@{ tag = "v1"; files = @([ordered]@{ path = "TazUO.exe"; size = 3; sha256 = (Get-Sha256 $e) }, [ordered]@{ path = "x.dll"; size = $xText.Length; sha256 = (Get-Sha256 $x) }) } | ConvertTo-Json -Depth 4
+    return Read-ClientManifest $j
+}
+$mOld = New-OneManifest "AAAA"
+$cache = Read-HashCache $pp.HashCache
+[void](Get-ChangedFiles $pp.Client $mOld $cache)
+# (the files are older than the 2 s caution, so the rows are kept)
+[void](Write-HashCache $pp.HashCache $cache)
+Check ((Test-Path $pp.HashCache) -and (Read-HashCache $pp.HashCache).Count -eq 2) "L1: setup: the scan of the old client wrote a cache with a row per file"
+# the release zip: x.dll has the same size AND the same mtime as the installed one, other bytes
+$zsrc = Join-Path $root "zsrc"; Put (P $zsrc "TazUO.exe") "exe"; Put (P $zsrc "x.dll") "BBBB"
+$zipx = Join-Path $root "full.zip"
+$zf = [IO.File]::Create($zipx); $za = New-Object IO.Compression.ZipArchive($zf, [IO.Compression.ZipArchiveMode]::Create)
+foreach ($pair in @(@("TazUO.exe", "exe"), @("x.dll", "BBBB"))) {
+    $en = $za.CreateEntry($pair[0]); $en.LastWriteTime = New-Object DateTimeOffset ($mt.ToLocalTime())   # (zip times are local clock fields)
+    $w = New-Object IO.StreamWriter($en.Open()); $w.Write($pair[1]); $w.Dispose()
+}
+$za.Dispose(); $zf.Dispose()
+Install-ClientUpdate $root $zipx (Get-Sha256 $zipx) "v2"
+$xi = New-Object IO.FileInfo (P $pp.Client "x.dll")
+Info "mtime wanted $($mt.Ticks) got $($xi.LastWriteTimeUtc.Ticks)"
+Check ((Read-F (P $pp.Client "x.dll")) -eq "BBBB" -and $xi.LastWriteTimeUtc.Ticks -eq $mt.Ticks) "L1: setup: the new x.dll has the old one's size and mtime, other bytes"
+Check (-not (Test-Path $pp.HashCache)) "L1: the full-zip install removed the hash cache"
+# a later release lists the OLD bytes again (revert): the scan must see x.dll as changed
+$c2 = Read-HashCache $pp.HashCache
+$chg = @(Get-ChangedFiles $pp.Client $mOld $c2 | ForEach-Object { $_.Path })
+Check ($chg -contains "x.dll" -and $script:LastScan.Hashed -ge 1) "L1: revert to the old bytes: x.dll is seen as changed (changed: $($chg -join ','))"
+# a rollback forgets it too
+Set-Content -LiteralPath $pp.HashCache -Value "$HashCacheMagic"
+Rename-Item $pp.Client "Client.failed"; Copy-Item -Recurse (P $root "Client.failed") $pp.Old
+Write-Pending $pp.Pending "v2" ("b" * 64) @{ Tag = "v1"; Sha256 = ("a" * 64) } $false
+Restore-PreviousClient $root
+Check (-not (Test-Path $pp.HashCache)) "L1: a rollback (Restore-PreviousClient) forgets the hash cache"
+Remove-Item $root -Recurse -Force
+
+# L2: Cancel is switched on again before the full-zip fallback after a swap that failed
+$sc = New-Scenario
+$pp = Get-Paths $sc.Root
+$mfList = Join-Path $sc.Root "list.json"; [IO.File]::WriteAllText($mfList, $sc.List)
+$info = @{ Tag = "v15"; Url = "http://example.invalid/c.zip"; Sha256 = (Get-Sha256 $sc.Zip); ManifestUrl = "http://example.invalid/list"; ManifestSha256 = (Get-Sha256 $mfList) }
+$script:origInvokeDelta = ${function:Invoke-ClientDelta}; $script:origSave = ${function:Save-UrlWithTimeout}
+function Invoke-ClientDelta([string]$root, $info) {
+    # the real thing up to the swap, then the swap fails (as it would on a locked folder)
+    Set-WorkCancelable $false
+    throw "the swap failed (test)"
+}
+$script:canAtDownload = $null; $script:dl = 0
+function Save-UrlWithTimeout([string]$url, [string]$out, $a, $b, $c, [switch]$Resume) {
+    $script:dl++; $script:canAtDownload = (Get-WorkState).CanCancel
+    Copy-Item -LiteralPath $sc.Zip -Destination $out
+}
+$global:UoWork = [hashtable]::Synchronized(@{ Status = ""; Detail = ""; Done = 0L; Total = 0L; Cancel = $false; CanCancel = $true })
+Invoke-ClientUpdateWork $sc.Root $info (Join-Path $sc.Root "dl.zip")
+$canAfter = $global:UoWork.CanCancel
+Remove-Variable UoWork -Scope Global
+Check ($script:dl -eq 1 -and $script:canAtDownload -eq $true) "L2: after a failed swap the full-zip download starts with Cancel enabled"
+Check ((Read-Stamp $pp.Stamp).Tag -eq "v15") "L2: ... and the fallback completes the update"
+Set-Item function:Invoke-ClientDelta $script:origInvokeDelta
+Set-Item function:Save-UrlWithTimeout $script:origSave
+Remove-Item $sc.Root -Recurse -Force
+
+# L3: when the window loop throws, the wait for the job pumps the window instead of blocking
+$sc = New-Scenario $N
+$pp = Get-Paths $sc.Root
+$script:pumps = 0; $script:throwAtTick = 0;   # the very first tick (the job is still starting up)
+ $script:cancelAfter = -1.0
+$threw = $null
+$tL3 = Get-Seconds { try { $null = Invoke-Background $sc.Root "Updating..." "Install-ClientUpdate" @($sc.Root, $sc.Zip, (Get-Sha256 $sc.Zip), "v15") } catch { $script:threw = $_.Exception.Message } }
+$script:throwAtTick = -1
+Check ($script:threw -eq "the window broke") "L3: the UI loop's own error reaches the caller ($script:threw)"
+Check ($script:pumps -ge 1) ("L3: while waiting for the job to stop the window was pumped ($($script:pumps) times, {0:N1} s)" -f $tL3)
+$pp2 = $pp
+Check (((Test-Path $pp2.New) -eq $false) -and ((Read-Stamp $pp2.Stamp).Tag -in @("v14", "v15")) -and ((Test-Path (Join-Path $pp2.Client "TazUO.exe")))) "L3: the job stopped at a safe point: no Client.new, a whole Client"
+Remove-Item $sc.Root -Recurse -Force
+
+# L4: Cancel on a dead connection is immediate (it was the connect / stall timeout)
+function Start-DeadServer([int]$port, [string]$mode) {
+    return Start-Job -ArgumentList $port, $mode -ScriptBlock {
+        param($port, $mode)
+        $l = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $port); $l.Start()
+        try {
+            while ($true) {
+                if (-not $l.Pending()) { Start-Sleep -Milliseconds 15; continue }
+                $c = $l.AcceptTcpClient(); $st = $c.GetStream()
+                $b = New-Object byte[] 4096; [void]$st.Read($b, 0, 4096)
+                if ($mode -eq "stall") {   # headers and a few bytes, then silence
+                    $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: 5000000`r`nConnection: close`r`n`r`nabcdef")
+                    $st.Write($h, 0, $h.Length); $st.Flush()
+                }
+                Start-Sleep -Seconds 60   # (mode "silent": no answer at all)
+            }
+        } finally { $l.Stop() }
+    }
+}
+$root = New-Root
+$port = Get-Random -Minimum 20000 -Maximum 40000
+foreach ($mode in @("silent", "stall")) {
+    $port++
+    $job = Start-DeadServer $port $mode
+    Start-Sleep -Milliseconds 1500
+    $out = Join-Path $root "dead-$mode.bin"
+    $script:cancelAfter = 0.7; $script:isCancel = $false
+    $tD = Get-Seconds { try { $null = Invoke-Background $root "Downloading..." "Save-UrlWithTimeout" @("http://127.0.0.1:$port/x", $out, 30, 60, 1800) } catch { $script:isCancel = $_.Exception -is [System.OperationCanceledException] } }
+    $script:cancelAfter = -1.0
+    Check ($script:isCancel -and $tD -lt 5) ("L4: Cancel on a connection that is $mode ends the download in {0:N1} s (timeouts are 30 / 60 s)" -f $tD)
+    Check (-not (Test-Path $out)) "L4: ... and the partial file is removed ($mode)"
+    Stop-Job $job; Remove-Job $job -Force
+}
+# the stall timeout still works in the background path (no Cancel pressed)
+$port++
+$job = Start-DeadServer $port "stall"
+Start-Sleep -Milliseconds 1500
+$script:err = $null
+$tS = Get-Seconds { try { $null = Invoke-Background $root "Downloading..." "Save-UrlWithTimeout" @("http://127.0.0.1:$port/x", (Join-Path $root "stall2.bin"), 30, 2, 1800) } catch { $script:err = $_.Exception.Message } }
+Check ($script:err -and $tS -lt 10) ("L4: a stalled download still times out in the background path ({0:N1} s: $script:err)" -f $tS)
+Stop-Job $job; Remove-Job $job -Force
+Remove-Item $root -Recurse -Force
+
+# L5: the runspace's error position / stack goes to launch.log, the message to the caller
+$sc = New-Scenario
+$pp = Get-Paths $sc.Root
+Remove-Item $pp.Stamp -Force; New-Item -ItemType Directory -Path $pp.Stamp | Out-Null
+$script:err = $null; try { $null = Invoke-Background $sc.Root "Updating..." "Install-ClientUpdate" @($sc.Root, $sc.Zip, (Get-Sha256 $sc.Zip), "v15") } catch { $script:err = $_.Exception.Message }
+$lg = Read-F $pp.Log
+Check ($lg -match "background Install-ClientUpdate failed: " -and $lg -match "Write-Stamp" -and $lg -match "Complete-ClientUpdate" -and @($lg -split "`n" | Where-Object { $_ -match "background Install-ClientUpdate failed" }).Count -eq 1) "L5: launch.log gets the error detail with the stack on one line"
+Check ($script:err -and $script:err -notmatch "\|") "L5: the caller still gets only the message"
 Remove-Item $sc.Root -Recurse -Force
 
 # 5g. a return value comes back

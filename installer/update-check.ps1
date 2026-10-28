@@ -134,6 +134,7 @@ function Write-LaunchLog([string]$root, [string]$msg) {
 # below does nothing, so the same functions run synchronously as before.
 
 $CancelMessage = "cancelled by the player"
+$UiLoopFailWaitSec = 60   # how long Invoke-Background waits (pumping) for a job to stop after its own loop failed
 $ProgressMs = 200   # how often a download / hash / unpack loop tells the window and looks for Cancel
 
 function Get-WorkState {
@@ -265,6 +266,15 @@ function Write-HashCache([string]$path, [hashtable]$cache) {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
         return $false
     }
+}
+
+# Forget the client's hashes. Called whenever the Client folder is replaced by
+# something other than a delta install (which writes the new rows itself): a full
+# zip, a rollback, a recovery. A row that survived could vouch for a file that is
+# no longer the one that was hashed (same size and mtime, other bytes).
+function Clear-ClientHashCache([string]$root) {
+    $p = Get-Paths $root
+    Remove-Item -LiteralPath $p.HashCache, "$($p.HashCache).tmp" -Force -ErrorAction SilentlyContinue
 }
 
 function Set-CacheEntry([hashtable]$cache, [string]$key, [long]$size, [long]$ticks, [string]$sha) {
@@ -529,6 +539,30 @@ function Get-LatestRelease {
 # failure the partial file is deleted and the error is thrown. -Resume: a
 # partial $out is kept on failure, and the next call asks for the rest
 # (Range); a server that answers with the whole file starts it over.
+# Wait for a download task (connect or one read) in slices of 200 ms; a Cancel or
+# $timeoutSec without an answer aborts the request. Returns the task's result.
+function Wait-DownloadTask($task, $req, [int]$timeoutSec) {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        while (-not $task.Wait(200)) {
+            if (Test-WorkCancelled) {
+                try { $req.Abort() } catch { }
+                throw (New-Object System.OperationCanceledException $CancelMessage)
+            }
+            if ($sw.Elapsed.TotalSeconds -gt $timeoutSec) {
+                try { $req.Abort() } catch { }
+                throw (New-Object System.TimeoutException "no answer from the download server for $timeoutSec s")
+            }
+        }
+        return $task.Result
+    } catch [System.AggregateException] {
+        # unwrap, so callers see the WebException (416 handling) and its message
+        $inner = $_.Exception.InnerException
+        if ($inner) { throw $inner }
+        throw
+    }
+}
+
 function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, [int]$StallSec = 30, [int]$TotalSec = 1800, [switch]$Resume) {
     $resp = $null; $in = $null; $fs = $null
     try {
@@ -540,8 +574,13 @@ function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, 
         $req.Timeout = $ConnectSec * 1000
         $req.ReadWriteTimeout = $StallSec * 1000
         if ($have -gt 0) { $req.AddRange([long]$have) }
+        # In the background (a window with Cancel) the connect and the reads are
+        # tasks polled every 200 ms, so Cancel aborts the request at once instead
+        # of after the connect / stall timeout; the stall timeout is then kept here.
+        $work = Get-WorkState
         try {
-            $resp = $req.GetResponse()
+            if ($work) { $resp = Wait-DownloadTask ($req.GetResponseAsync()) $req $ConnectSec }
+            else { $resp = $req.GetResponse() }
         } catch {
             # 416: what is there is already the whole file (or more); the
             # checksum decides.
@@ -562,14 +601,16 @@ function Save-UrlWithTimeout([string]$url, [string]$out, [int]$ConnectSec = 30, 
         $sw = [Diagnostics.Stopwatch]::StartNew()
         # progress and Cancel for the window (nothing when run inline). A Cancel
         # leaves a -Resume partial in place, like any other broken-off download.
-        $work = Get-WorkState
         $got = 0L; $expect = 0L
         if ($work) {
             if ($have -gt 0 -and [int]$resp.StatusCode -eq 206) { $got = $have }
             if ($resp.ContentLength -gt 0) { $expect = $got + $resp.ContentLength }
         }
         $tick = [Diagnostics.Stopwatch]::StartNew()
-        while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+        while ($true) {
+            if ($work) { $n = Wait-DownloadTask ($in.ReadAsync($buf, 0, $buf.Length)) $req $StallSec }
+            else { $n = $in.Read($buf, 0, $buf.Length) }
+            if ($n -le 0) { break }
             $fs.Write($buf, 0, $n)
             if ($sw.Elapsed.TotalSeconds -gt $TotalSec) { throw "download took longer than $TotalSec s" }
             if ($work) {
@@ -712,6 +753,7 @@ function Repair-ClientFolder([string]$root) {
         Rename-Item -LiteralPath $p.Client -NewName $aside
         Write-LaunchLog $root "recovery: Client had no TazUO.exe, moved to $aside"
     }
+    Clear-ClientHashCache $root   # Client is about to be a different folder
     if ($oldOk) {
         Rename-Item -LiteralPath $p.Old -NewName "Client"
         $pend = Read-Pending $p.Pending
@@ -806,6 +848,7 @@ function Restore-PreviousClient([string]$root) {
         if ($aside) { Rename-Item -LiteralPath (Join-Path $root $aside) -NewName "Client" }
         throw
     }
+    Clear-ClientHashCache $root   # Client is a different folder now
     if ($pend) {
         if ($pend.PrevTag) { Write-Stamp $p.Stamp $pend.PrevTag $pend.PrevSha }
         if ($pend.Tag) { Set-Content -LiteralPath $p.Skip -Value "$($pend.Tag) $($pend.Sha256.ToLower())" -Encoding ASCII }
@@ -875,6 +918,9 @@ function Install-ClientUpdate([string]$root, [string]$zip, [string]$expectedSha,
         Remove-TreeFast $p.New -Quiet
         throw
     }
+    # The Client folder is about to be replaced by the zip's files: what the cache
+    # says about the old ones must not outlive it (a failed swap only costs a rehash).
+    Clear-ClientHashCache $root
     Complete-ClientUpdate $root $expectedSha $tag
 }
 
@@ -1754,7 +1800,16 @@ function Show-Busy([string]$text) {
     $f.Controls.Add($b)
     $f.Tag = @{ Label = $l; Bar = $bar; Detail = $d; Button = $b; CancelRequested = $false; Allow = $false; Mode = "marquee"; Status = $text; DetailText = ""; CanCancel = $true }
     $b.Add_Click({ param($s, $e) $s.FindForm().Tag.CancelRequested = $true })
-    $f.Add_FormClosing({ param($s, $e) if (-not $s.Tag.Allow) { $e.Cancel = $true; $s.Tag.CancelRequested = $true } })
+    $f.Add_FormClosing({
+        param($s, $e)
+        if ($s.Tag.Allow) { return }
+        # a logoff / shutdown / End Task must not be held up by this window: let it
+        # close and ask the work to stop (an update cut off anywhere is recovered at the
+        # next start); only the player's own close is turned into Cancel
+        $reason = [string]$e.CloseReason
+        $s.Tag.CancelRequested = $true
+        if ($reason -ne "WindowsShutDown" -and $reason -ne "TaskManagerClosing") { $e.Cancel = $true }
+    })
     $f.Show()
     [System.Windows.Forms.Application]::DoEvents()
     return $f
@@ -1764,6 +1819,11 @@ function Show-Busy([string]$text) {
 # Cancel from the window goes into the state (only while cancelling is allowed).
 function Update-Busy($form, $state) {
     if ($null -eq $form) { return }
+    if ($form.IsDisposed) {
+        # closed under us (shutdown): nothing to draw, but the work should stop
+        if ([bool]$state.CanCancel) { $state.Cancel = $true }
+        return
+    }
     $ui = $form.Tag
     $status = [string]$state.Status
     if ($status -ne $ui.Status) { $ui.Status = $status; $ui.Label.Text = $status }
@@ -1785,6 +1845,12 @@ function Update-Busy($form, $state) {
         $ui.Button.Text = "Cancelling..."
     }
     $ui.CancelRequested = $false
+    Invoke-UiPump $form
+}
+
+# Let the window handle its messages (a real WinForms window only).
+function Invoke-UiPump($form) {
+    if ($null -eq $form -or $form.GetType().FullName -ne "System.Windows.Forms.Form") { return }
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -1811,7 +1877,7 @@ $BackgroundRunner = {
         while ($x) { if ($x -is [System.OperationCanceledException]) { $c = $true }; $x = $x.InnerException }
         $w.Cancelled = $c
         $w.Error = $_.Exception.Message
-        $w.ErrorDetail = ($_ | Out-String)
+        $w.ErrorDetail = ($_ | Out-String) + " " + $_.ScriptStackTrace
     } finally {
         $w.Finished = $true
     }
@@ -1854,8 +1920,14 @@ function Invoke-Background([string]$root, [string]$status, [string]$command, [ob
         if ($async -and -not $async.IsCompleted) {
             # an unexpected exit from the loop above: ask it to stop, give it time
             # to reach a safe point (never in the middle of the folder swap)
+            # The window is still there and still needs its messages handled, so the
+            # wait is a pumping loop, not one blocking wait.
             $state.Cancel = $true
-            [void]$async.AsyncWaitHandle.WaitOne(60000)
+            $waited = [Diagnostics.Stopwatch]::StartNew()
+            while (-not $async.IsCompleted -and $waited.Elapsed.TotalSeconds -lt $UiLoopFailWaitSec) {
+                try { Invoke-UiPump $busy } catch { }
+                Start-Sleep -Milliseconds 50
+            }
             if (-not $async.IsCompleted) { try { $ps.Stop() } catch { } }
         }
         Close-Busy $busy
@@ -1863,7 +1935,11 @@ function Invoke-Background([string]$root, [string]$status, [string]$command, [ob
         if ($rs) { try { $rs.Close(); $rs.Dispose() } catch { } }
     }
     if ($state.Cancelled) { throw (New-Object System.OperationCanceledException $CancelMessage) }
-    if ($state.Error) { throw (New-Object System.Exception ([string]$state.Error)) }
+    if ($state.Error) {
+        # the message goes to the caller; the position and stack stay in launch.log
+        if ($state.ErrorDetail) { Write-LaunchLog $root ("background $command failed: " + (([string]$state.ErrorDetail -replace '\s*[\r\n]+\s*', ' | ').Trim())) }
+        throw (New-Object System.Exception ([string]$state.Error))
+    }
     return $state.Result
 }
 
@@ -1882,6 +1958,9 @@ function Invoke-ClientUpdateWork([string]$root, $info, [string]$zip) {
             Write-LaunchLog $root "updated to $($info.Tag) ($($info.Sha256)) by fetching the changed files only: $([math]::Round($fetched / 1MB, 1)) MB"
         } catch {
             if (Test-IsCancel $_) { throw }
+            # a failure in the swap itself switched Cancel off; the swap has rolled
+            # back by now, so the full download can be cancelled again
+            Set-WorkCancelable $true
             Write-LaunchLog $root "update $($info.Tag): changed-files update not used, downloading the full client ($($_.Exception.Message))"
         }
     }
