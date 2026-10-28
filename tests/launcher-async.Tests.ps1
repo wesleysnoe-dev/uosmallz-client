@@ -760,6 +760,82 @@ Check ($lg -match "background Install-ClientUpdate failed: " -and $lg -match "Wr
 Check ($script:err -and $script:err -notmatch "\|") "L5: the caller still gets only the message"
 Remove-Item $sc.Root -Recurse -Force
 
+
+# ---- QC 174b: Clear-ClientHashCache never throws, and recovery / rollback finish whatever the cache path is ----
+function New-RecoveryRoot([string]$kind) {
+    # kind: "repair" = Client without TazUO.exe + Client.old (killed mid-swap); "restore" = new Client + Client.old + pending marker
+    $r = New-Root
+    $pq = Get-Paths $r
+    Put (P $pq.Old "TazUO.exe") "old exe"; Put (P $pq.Old "Data/keep.txt") "old data"
+    if ($kind -eq "repair") { Put (P $pq.Client "junk.txt") "half" }
+    else {
+        Put (P $pq.Client "TazUO.exe") "new exe"; Put (P $pq.Client "Data/mine.txt") "played since"
+        Write-Stamp $pq.Stamp "v2" ("b" * 64)
+        Write-Pending $pq.Pending "v2" ("b" * 64) @{ Tag = "v1"; Sha256 = ("a" * 64) } $false
+    }
+    return $r
+}
+function Set-CachePathTo([string]$r, [string]$how) {
+    $pq = Get-Paths $r
+    switch ($how) {
+        "dir"      { Put (Join-Path $pq.HashCache "child.txt") "x" }                       # a non-empty folder where the file should be
+        "readonly" { Set-Content -LiteralPath $pq.HashCache -Value $HashCacheMagic; (Get-Item $pq.HashCache).IsReadOnly = $true }
+        "locked"   { Set-Content -LiteralPath $pq.HashCache -Value $HashCacheMagic; $script:lockFs = [IO.File]::Open($pq.HashCache, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+        "file"     { Set-Content -LiteralPath $pq.HashCache -Value $HashCacheMagic }
+    }
+}
+function Release-CachePath([string]$r) {
+    if ($script:lockFs) { $script:lockFs.Dispose(); $script:lockFs = $null }
+    $pq = Get-Paths $r
+    if (Test-Path -LiteralPath $pq.HashCache -PathType Leaf) { (Get-Item $pq.HashCache).IsReadOnly = $false }
+}
+foreach ($how in @("file", "dir", "readonly", "locked")) {
+    # Clear-ClientHashCache alone
+    $r = New-Root; Set-CachePathTo $r $how
+    $threw = $false; try { Clear-ClientHashCache $r } catch { $threw = $true }
+    $pq = Get-Paths $r
+    $valid = (Read-HashCache $pq.HashCache).Count -eq 0
+    Check (-not $threw -and $valid) "N1: Clear-ClientHashCache with the cache path as '$how' never throws and leaves no usable cache"
+    Release-CachePath $r; Remove-Item $r -Recurse -Force
+
+    # Repair-ClientFolder: Client moved aside, Client.old back, whatever the cache path is
+    $r = New-RecoveryRoot "repair"; Set-CachePathTo $r $how
+    $pq = Get-Paths $r
+    $res = $null; $threw = $null; try { $res = Repair-ClientFolder $r } catch { $threw = $_.Exception.Message }
+    Check ($null -eq $threw -and $res -eq "old" -and (Read-F (P $pq.Client "TazUO.exe")) -eq "old exe" -and (Read-F (P $pq.Client "Data/keep.txt")) -eq "old data" -and -not (Test-Path $pq.Old)) "N1: Repair-ClientFolder with the cache path as '$how': the Client folder is back ($threw)"
+    Release-CachePath $r; Remove-Item $r -Recurse -Force
+
+    # Restore-PreviousClient: stamp, pending marker and skip file settled whatever the cache path is
+    $r = New-RecoveryRoot "restore"; Set-CachePathTo $r $how
+    $pq = Get-Paths $r
+    $threw = $null; try { Restore-PreviousClient $r } catch { $threw = $_.Exception.Message }
+    $skip = Read-F $pq.Skip
+    Check ($null -eq $threw -and (Read-F (P $pq.Client "TazUO.exe")) -eq "old exe" -and (Read-F (P $pq.Client "Data/mine.txt")) -eq "played since" -and (Read-Stamp $pq.Stamp).Tag -eq "v1" -and -not (Test-Path $pq.Pending) -and $skip -and $skip.Trim() -eq ("v2 " + ("b" * 64))) "N1: Restore-PreviousClient with the cache path as '$how': Client.old back, stamp v1, marker gone, v2 skipped, played-since files kept ($threw)"
+    Release-CachePath $r; Remove-Item $r -Recurse -Force
+}
+# a Client.new that is verified and complete (marker) is also restored whatever the cache path is
+$r = New-Root; $pq = Get-Paths $r
+Put (P $pq.New "TazUO.exe") "new exe"; Write-ReadyMarker $pq.New "v3" ("c" * 64); Put (Join-Path $pq.HashCache "child.txt") "x"
+$res = $null; $threw = $null; try { $res = Repair-ClientFolder $r } catch { $threw = $_.Exception.Message }
+Check ($null -eq $threw -and $res -eq "new" -and (Read-Stamp $pq.Stamp).Tag -eq "v3" -and (Read-F $pq.Exe) -eq "new exe") "N1: Repair-ClientFolder restoring a verified Client.new with a folder at the cache path ($threw)"
+Remove-Item $r -Recurse -Force
+# a full-zip install with a folder at the cache path completes
+$sc = New-Scenario; $pq = Get-Paths $sc.Root
+Put (Join-Path $pq.HashCache "child.txt") "x"
+$threw = $null; try { Install-ClientUpdate $sc.Root $sc.Zip (Get-Sha256 $sc.Zip) "v15" } catch { $threw = $_.Exception.Message }
+Check ($null -eq $threw -and (Read-Stamp $pq.Stamp).Tag -eq "v15") "N1: a full-zip install with a folder at the cache path still completes ($threw)"
+Remove-Item $sc.Root -Recurse -Force
+# N3: a delete that fails is logged, and the file is emptied instead (a read-only folder makes File.Delete fail; the log file is writable)
+$r = New-Root; $pq = Get-Paths $r
+Set-Content -LiteralPath $pq.HashCache -Value "$HashCacheMagic`n1`t2`t$("a" * 64)`tx.dll"
+Set-Content -LiteralPath $pq.Log -Value "start"
+& chmod 555 $r
+$threw = $false; try { Clear-ClientHashCache $r } catch { $threw = $true }
+& chmod 755 $r
+$lg = Read-F $pq.Log
+Check (-not $threw -and (Read-HashCache $pq.HashCache).Count -eq 0 -and $lg -match "hash cache could not be deleted .*emptied instead") "N3: a cache that cannot be deleted is emptied and the failure is written to launch.log"
+Remove-Item $r -Recurse -Force
+
 # 5g. a return value comes back
 $rr = Invoke-Background $here "x" "Get-Sha256" @($launcher)
 Check ($rr -eq (Get-Sha256 $launcher)) "background: a function's return value comes back"

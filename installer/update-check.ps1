@@ -272,9 +272,33 @@ function Write-HashCache([string]$path, [hashtable]$cache) {
 # something other than a delta install (which writes the new rows itself): a full
 # zip, a rollback, a recovery. A row that survived could vouch for a file that is
 # no longer the one that was hashed (same size and mtime, other bytes).
+# Never throws (it runs inside the swap, the recovery and the rollback, which must
+# finish): plain [IO.File] calls, no Remove-Item (which prompts, and fails, on a
+# folder with children). A file that cannot be deleted (read-only, held by an
+# antivirus) gets its flag cleared, then is emptied instead - an empty cache is
+# no cache - and a failure is written to launch.log.
 function Clear-ClientHashCache([string]$root) {
     $p = Get-Paths $root
-    Remove-Item -LiteralPath $p.HashCache, "$($p.HashCache).tmp" -Force -ErrorAction SilentlyContinue
+    foreach ($f in @($p.HashCache, "$($p.HashCache).tmp")) {
+        try {
+            $full = ConvertTo-FullPath $f
+            if (-not [IO.File]::Exists($full)) { continue }   # also false for a folder of that name: nothing to read as a cache
+            try {
+                [IO.File]::Delete($full)
+            } catch {
+                $first = $_.Exception.Message
+                try {
+                    [IO.File]::SetAttributes($full, [IO.FileAttributes]::Normal)
+                    [IO.File]::Delete($full)
+                } catch {
+                    [IO.File]::WriteAllText($full, "")
+                    Write-LaunchLog $root "hash cache could not be deleted ($first); emptied instead"
+                }
+            }
+        } catch {
+            Write-LaunchLog $root "hash cache not cleared ($f): $($_.Exception.Message)"
+        }
+    }
 }
 
 function Set-CacheEntry([hashtable]$cache, [string]$key, [long]$size, [long]$ticks, [string]$sha) {
@@ -753,7 +777,6 @@ function Repair-ClientFolder([string]$root) {
         Rename-Item -LiteralPath $p.Client -NewName $aside
         Write-LaunchLog $root "recovery: Client had no TazUO.exe, moved to $aside"
     }
-    Clear-ClientHashCache $root   # Client is about to be a different folder
     if ($oldOk) {
         Rename-Item -LiteralPath $p.Old -NewName "Client"
         $pend = Read-Pending $p.Pending
@@ -761,12 +784,14 @@ function Repair-ClientFolder([string]$root) {
             if ($pend.PrevTag) { Write-Stamp $p.Stamp $pend.PrevTag $pend.PrevSha }
             Remove-Item -LiteralPath $p.Pending -Force -ErrorAction SilentlyContinue
         }
+        Clear-ClientHashCache $root   # Client is a different folder now (after the restore: it cannot fail it)
         Write-LaunchLog $root "recovery: restored Client.old (the last client that ran)"
         return "old"
     }
     Rename-Item -LiteralPath $p.New -NewName "Client"
     Write-Stamp $p.Stamp $newMarker.Tag $newMarker.Sha256
     Remove-Item -LiteralPath (Join-Path $p.Client $ReadyMarkerName) -Force -ErrorAction SilentlyContinue
+    Clear-ClientHashCache $root
     Write-LaunchLog $root "recovery: restored the verified Client.new ($($newMarker.Tag))"
     return "new"
 }
@@ -848,12 +873,12 @@ function Restore-PreviousClient([string]$root) {
         if ($aside) { Rename-Item -LiteralPath (Join-Path $root $aside) -NewName "Client" }
         throw
     }
-    Clear-ClientHashCache $root   # Client is a different folder now
     if ($pend) {
         if ($pend.PrevTag) { Write-Stamp $p.Stamp $pend.PrevTag $pend.PrevSha }
         if ($pend.Tag) { Set-Content -LiteralPath $p.Skip -Value "$($pend.Tag) $($pend.Sha256.ToLower())" -Encoding ASCII }
     }
     Remove-Item -LiteralPath $p.Pending -Force -ErrorAction SilentlyContinue
+    Clear-ClientHashCache $root   # Client is a different folder now (last, after the stamp and marker are settled)
     Write-LaunchLog $root "rolled back to the previous client ($($pend.PrevTag)); $($pend.Tag) skipped"
 }
 
