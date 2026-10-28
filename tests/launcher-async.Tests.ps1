@@ -48,7 +48,7 @@ Check ($badAst.Count -eq 0) "5.1: no PowerShell 7-only syntax nodes"
 $src = [IO.File]::ReadAllText($launcher)
 Check (-not ($src -cmatch '[^\x00-\x7F]')) "5.1: the script is pure ASCII (5.1 reads a BOM-less file as ANSI)"
 Check (-not ($src -match 'ForEach-Object\s+-Parallel|-AsHashtable|-AsByteStream|\[IO\.Path\]::GetRelativePath|Join-Path[^\r\n|)]*-AdditionalChildPath')) "5.1: none of the PowerShell 7 / .NET Core-only calls"
-Check ($LauncherVersion -eq 10) "launcher version is 10"
+Check ($LauncherVersion -eq 11) "launcher version is 11"
 Check (Test-LauncherScript $src) "self-update: the new launcher passes Test-LauncherScript"
 
 # =========================================================================

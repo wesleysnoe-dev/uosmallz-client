@@ -81,7 +81,7 @@ $HdArtLegacyUrl   = "http://uosmallz.duckdns.org:2595/"   # allowlist: never rea
 # when installer/update-check.ps1 on main carries a higher number, so bump it
 # with every change to this file or launch.vbs (the installer workflow refuses
 # a change that does not).
-$LauncherVersion = 10
+$LauncherVersion = 11
 
 # Each release also lists every file of the client zip with its size and
 # SHA-256 (the build writes it); an update then fetches only what changed.
