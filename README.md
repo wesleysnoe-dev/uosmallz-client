@@ -58,6 +58,12 @@ CASTLE ART FIX (v11)
   as an ExternalImages PNG now take their click area from their own sprite,
   so the tomes and checkbook can be picked up again.
 
+CASTLE ART, BANK DEPOSIT SAFE (v12)
+  v12 redraws two item images, 0xFE06 and 0xFE07 in ExternalImages\art: the
+  Bank Deposit Safe is now a gold iron chest, drawn like the stock chest in
+  both facings so it can be turned. Nothing else changes; the tiledata rows
+  for these ids are unchanged.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
