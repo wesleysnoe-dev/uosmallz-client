@@ -81,14 +81,16 @@ FACTION TABARDS (v14, item ids moved in v15)
   on the paperdoll. The player's Equipconv.def stays untouched. Bad lines are logged
   as "EquipConv overrides: ..." and skipped. Until the shard turns
   uooffline.factionTabards on, nothing shows these.
-  v15 moves the item art from 0xFE10-0xFE17 to 0x2F44-0x2F4B (0xFE10 -> 0x2F44 ...
-  0xFE17 -> 0x2F4B): the server's 0x78 mobile packet masks a worn item's id with
+  v15 moves the item art from 0xFE10-0xFE17 to 0x4C00-0x4C07 (0xFE10 -> 0x4C00 ...
+  0xFE17 -> 0x4C07): the server's 0x78 mobile packet masks a worn item's id with
   0x7FFF, so 0xFE10 arrived as 0x7E10 (no art) and a worn tabard vanished after a gate.
-  0x2F44-0x2F4B are blank placeholder ids in the stock client data (below 0x3FFF, so
-  every item packet keeps them). patches/client/0005's tiledata override accepts
-  0xFE00-0xFE0D (castle) and, since 0007, 0x2F44-0x2F4B (tabards) and nothing between.
-  Anim ids and gumps are unchanged. Server and client go together: the server moves
-  existing tabards to the new ids at startup (uo-offline-dev ie-faction-tabards-migfix).
+  0x4C00-0x4C07 are blank in the stock 7.0.23.1 art and tiledata and no static of the
+  shard's maps uses them, and every packet a 7.0.23.1 client gets carries them unchanged
+  (0x78 keeps ids below 0x8000; the ground, container and equip packets carry the full
+  id). patches/client/0005's tiledata override accepts 0xFE00-0xFE0D (castle) and, since
+  0007, 0x4C00-0x4C07 (tabards) and nothing between. Anim ids and gumps are unchanged.
+  Server and client go together: the server moves existing tabards to the new ids at
+  startup (uo-offline-dev ie-faction-tabards-migfix).
 
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile

@@ -104,22 +104,23 @@ index 12ba549f2..99a2e85f3 100644
  
          public void ProcessBodyConvDef(BodyConvFlags flags)
 diff --git a/src/ClassicUO.Assets/TileDataLoader.cs b/src/ClassicUO.Assets/TileDataLoader.cs
-index 43e29f351..98fbcc067 100644
+index 43e29f351..bcff2aad0 100644
 --- a/src/ClassicUO.Assets/TileDataLoader.cs
 +++ b/src/ClassicUO.Assets/TileDataLoader.cs
-@@ -23,6 +23,11 @@ namespace ClassicUO.Assets
+@@ -23,6 +23,12 @@ namespace ClassicUO.Assets
          // logged (file and line) and skipped; a file that cannot be read is logged and skipped. Never throws:
          // a broken or locked csv must not stop the client from starting.
          public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
-+        // The faction tabards' item art (client v15): 0x2F44-0x2F4B, in a run of blank placeholder ids of the stock tiledata
-+        // (below 0x3FFF, which every item packet keeps). Only these ids, not the ids between them and 0xFE00.
-+        public const uint TabardFirst = 0x2F44, TabardLast = 0x2F4B;
++        // The faction tabards' item art (client v15): 0x4C00-0x4C07, ids that are blank in the stock tiledata and used by no
++        // static of the shard's maps. A worn item's id travels in the 0x78 packet (masked 0x7FFF), so it must stay below 0x8000.
++        // Only these ids, not the ids between them and 0xFE00.
++        public const uint TabardFirst = 0x4C00, TabardLast = 0x4C07;
 +        private static bool IsOverrideId(ulong id) =>
 +            id >= OverrideFirst && id <= OverrideLast || id >= TabardFirst && id <= TabardLast;
          private const int MaxLineWarnings = 20;
  
          private void ApplyOverrides(string dir)
-@@ -93,8 +98,8 @@ namespace ClassicUO.Assets
+@@ -93,8 +99,8 @@ namespace ClassicUO.Assets
                  if (v[i] > max[i])
                      return $"{names[i]} {v[i]} is out of range (max {max[i]})";
              }
