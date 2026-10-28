@@ -103,8 +103,10 @@ CORVAEOBORO ART: SCROLLS, REAGENTS, SPELL ICONS (v16, test)
   untouched. Every PNG is exactly 2x the size of the stock image of its id (the mod's
   1x pixels, each doubled), so patch 0003 treats it as an HD version and draws it at the
   stock size: the same look with or without the HD art pack, and it wins over the
-  pack's own image for that id. Four stock reagent graphics (0x0F79, 0x0F7C, 0x0F7F,
-  0x0F8B) have no Corvae art and stay stock. Credit: art by CorvaeOboro (CC0 1.0); the
+  pack's own image for that id. Clicking and the crop in vendor, grid, trade and loot
+  windows follow the new picture (the PNG sampled down to the stock size; a PNG of any
+  other size is a plain replacement, as before). Four stock reagent graphics (0x0F79,
+  0x0F7C, 0x0F7F, 0x0F8B) have no Corvae art and stay stock. Credit: art by CorvaeOboro (CC0 1.0); the
   scrolls are based on ScrollsByJewele (Jewele) and ScrollsByCircle (Gaechti), and the
   Magery spell icons on MoreColorSpells (Gaechti and Boothby), per CorvaeOboro's own
   READMEs; CC0 covers CorvaeOboro's contribution only. Licence, credit and the id list
