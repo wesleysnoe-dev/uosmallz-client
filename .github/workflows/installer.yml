@@ -5,14 +5,37 @@
 #                     launch.vbs must raise $LauncherVersion: installed
 #                     launchers update themselves only to a higher number
 #                     (update-check.ps1, Update-LauncherSelf).
+#   decide            whether this run replaces the installer, or leaves it to
+#                     build-client.yml (below).
 #   installer         rebuilds UOSmallz-Installer-win.zip (installer/ +
 #                     notices/ + README, as build-client.yml packs it) and
 #                     replaces it, and its line in SHA256SUMS.txt, on the
 #                     latest release. The client zips and their file lists
 #                     are not touched, so no player is offered an update.
 #
-# A push that also ships a new client runs build-client.yml, which packs its
-# own installer; the shared concurrency group keeps the two from overlapping.
+# "Latest release" is whatever release is marked latest when the installer job
+# asks, and build-client.yml marks a new release latest only at its very end.
+# A push that changes files of both workflows starts both, in no set order, so
+# a refresh that ran first would put the new commit's installer on the previous
+# release. Hence:
+#   push              if the same push also starts build-client.yml (it
+#                     changes one of that workflow's paths), this run only
+#                     checks the launcher: the build packs the installer of
+#                     this very commit into its new release, and if the build
+#                     fails, the workflow_run below refreshes instead. Without
+#                     an earlier commit to compare with it refreshes, as it
+#                     always did.
+#   workflow_run      after a client build on main. Success: nothing to do.
+#                     Failure (e.g. CLIENT_VERSION not bumped, so no release):
+#                     refresh from main, unless main has since moved on to a
+#                     commit that starts another build. Cancelled (by hand,
+#                     or replaced in the concurrency queue by a newer run):
+#                     nothing, since a newer build may be about to publish;
+#                     run this by hand if the installer still needs it.
+#   workflow_dispatch refresh, from the branch it is run on.
+# The installer job shares the concurrency group with build-client.yml, so it
+# never replaces assets while a build is publishing. Only that job joins the
+# group: runs that refresh nothing should not hold or take a place in its queue.
 name: Refresh the installer
 
 on:
@@ -24,13 +47,14 @@ on:
       - "notices/**"
       - "README.md"
       - ".github/workflows/installer.yml"
+  workflow_run:
+    # must match build-client.yml's name: exactly, or this never fires
+    workflows: ["Build UO Smallz client"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
-
-concurrency:
-  group: build-client
-  cancel-in-progress: false
 
 jobs:
   launcher-version:
@@ -60,11 +84,74 @@ jobs:
           fi
           echo "Launcher $old -> $new."
 
+  decide:
+    runs-on: ubuntu-22.04
+    outputs:
+      refresh: ${{ steps.d.outputs.refresh }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Refresh here, or leave it to the client build
+        id: d
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # build-client.yml's on.push.paths: keep this in step with them.
+          builds() { grep -qE '^(patches/|client-files/|CLIENT_VERSION$|\.github/workflows/build-client\.yml$)' <<< "$1"; }
+          known() { [ -n "$1" ] && [ "$1" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$1^{commit}" 2>/dev/null; }
+          refresh=true
+          case "$EVENT" in
+            push)
+              if ! known "$BEFORE"; then
+                echo "No earlier commit to compare with, so no telling whether a client build runs too: refreshing."
+              elif builds "$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"; then
+                echo "This push also starts build-client.yml: its release will carry the installer of $GITHUB_SHA, and if it fails, the refresh runs after it."
+                refresh=false
+              else
+                echo "No client build on this push: refreshing."
+              fi
+              ;;
+            workflow_run)
+              if [ "$RUN_BRANCH" != main ] || [ "$RUN_REPO" != "$GITHUB_REPOSITORY" ]; then
+                echo "Build $RUN_URL ran on $RUN_REPO $RUN_BRANCH, not on main here: nothing to do."
+                refresh=false
+              elif [ "$RUN_CONCLUSION" = success ]; then
+                echo "Build $RUN_URL published a release that already carries the installer packed from $RUN_SHA: nothing to do."
+                refresh=false
+              elif [ "$RUN_CONCLUSION" != failure ] && [ "$RUN_CONCLUSION" != timed_out ]; then
+                echo "Build $RUN_URL ended '$RUN_CONCLUSION': not refreshing, since a newer build may be about to publish. Run this workflow by hand if the installer still needs it."
+                refresh=false
+              elif known "$RUN_SHA" && builds "$(git diff --name-only "$RUN_SHA" "$GITHUB_SHA")"; then
+                echo "Build $RUN_URL ($RUN_SHA) failed, but main is now at $GITHUB_SHA, which starts another client build: leaving the installer to that one."
+                refresh=false
+              else
+                echo "Build $RUN_URL ($RUN_SHA) failed, so it published nothing: refreshing from $GITHUB_SHA."
+              fi
+              ;;
+            *)
+              echo "Run by hand: refreshing."
+              ;;
+          esac
+          echo "refresh=$refresh" >> "$GITHUB_OUTPUT"
+
   installer:
-    needs: launcher-version
+    needs: [launcher-version, decide]
+    if: needs.decide.outputs.refresh == 'true'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    concurrency:
+      group: build-client
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -85,7 +172,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Asked once, inside the concurrency group, so no build is publishing.
           tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          echo "Latest release: $tag"
           mkdir -p sums
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -D sums
           sha=$(sha256sum out/UOSmallz-Installer-win.zip | cut -d' ' -f1)
