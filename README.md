@@ -47,7 +47,8 @@ CASTLE WINDOWS (v10)
   0xB700-0xB76D in ExternalImages\gumps, above the item icons), art for the
   new castle items (item ids 0xFE00-0xFE0D in ExternalImages\art, 1x) and
   tiledata for them: patches/client/0005 reads TileData\*.csv beside
-  TazUO.exe after the player's tiledata.mul (only ids 0xFE00-0xFE0D; bad
+  TazUO.exe after the player's tiledata.mul (only ids 0xFE00-0xFE0D, since
+  v17 also the shard-item block 0x4C00-0x4CFF; bad
   lines are logged as "TileData overrides: ..." and skipped). The player's
   UO files stay untouched; all of it comes with client updates.
 
@@ -88,7 +89,8 @@ FACTION TABARDS (v14, item ids moved in v15)
   shard's maps uses them, and every packet a 7.0.23.1 client gets carries them unchanged
   (0x78 keeps ids below 0x8000; the ground, container and equip packets carry the full
   id). patches/client/0005's tiledata override accepts 0xFE00-0xFE0D (castle) and, since
-  0007, 0x4C00-0x4C07 (tabards) and nothing between. Anim ids and gumps are unchanged.
+  0007, 0x4C00-0x4C07 (tabards); since v17 (patch 0008) the whole shard-item block
+  0x4C00-0x4CFF, and nothing between it and 0xFE00. Anim ids and gumps are unchanged.
   Server and client go together: the server moves existing tabards to the new ids at
   startup (uo-offline-dev ie-faction-tabards-migfix).
 
@@ -112,6 +114,20 @@ CORVAEOBORO ART: SCROLLS, REAGENTS, SPELL ICONS (v16, test)
   READMEs; CC0 covers CorvaeOboro's contribution only. Licence, credit and the id list
   are in ExternalImages\CORVAE-ART-NOTICE.txt and corvae-art-ids.csv, and in
   notices\NOTICE.txt. To go back, delete those PNGs (or install the previous client).
+
+KNIGHT'S SURCOAT (client v17)
+  v17 reserves the item id block 0x4C00-0x4CFF for the shard's own items:
+  patches/client/0008 widens patch 0005's tiledata override from the tabards'
+  0x4C00-0x4C07 to 0x4C00-0x4CFF (the tabards work as before; 0xFE00-0xFE0D is
+  unchanged; nothing else is accepted). First item in the block: the Knight's
+  Surcoat. Six new files: item art 0x4C08 and 0x4C09 (1x, two facings) in
+  ExternalImages\art, paperdoll gumps 0xC81D (51229, male) and 0xEF2D (61229,
+  female) in ExternalImages\gumps, TileData\knights-surcoat.csv (the stock
+  surcoat's tiledata with anim id 1229) and EquipConv\knights-surcoat.csv (anim
+  1229 -> the stock surcoat animation 910 in the world, gump 1229 on the
+  paperdoll; 1229 is inside patch 0007's anim range, so 0007 is unchanged).
+  An older client has no tiledata or art for these ids, so the surcoat is
+  invisible there: the server item must only go out after players have v17.
 
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile

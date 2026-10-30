@@ -1,0 +1,32 @@
+diff --git a/src/ClassicUO.Assets/TileDataLoader.cs b/src/ClassicUO.Assets/TileDataLoader.cs
+--- a/src/ClassicUO.Assets/TileDataLoader.cs
++++ b/src/ClassicUO.Assets/TileDataLoader.cs
+@@ -23,12 +23,13 @@ namespace ClassicUO.Assets
+         // logged (file and line) and skipped; a file that cannot be read is logged and skipped. Never throws:
+         // a broken or locked csv must not stop the client from starting.
+         public const uint OverrideFirst = 0xFE00, OverrideLast = 0xFE0D;
+-        // The faction tabards' item art (client v15): 0x4C00-0x4C07, ids that are blank in the stock tiledata and used by no
+-        // static of the shard's maps. A worn item's id travels in the 0x78 packet (masked 0x7FFF), so it must stay below 0x8000.
+-        // Only these ids, not the ids between them and 0xFE00.
+-        public const uint TabardFirst = 0x4C00, TabardLast = 0x4C07;
++        // uo-offline (UO Smallz) 0008 (client v17): the block 0x4C00-0x4CFF is reserved for shard items (item art + tiledata
++        // row): the faction tabards 0x4C00-0x4C07 (client v15), the Knight's Surcoat 0x4C08-0x4C09, later items. Ids in the
++        // block must be blank in the stock tiledata and used by no static of the shard's maps. A worn item's id travels in the
++        // 0x78 packet (masked 0x7FFF), so it must stay below 0x8000. Only this block, not the ids between it and 0xFE00.
++        public const uint ShardItemFirst = 0x4C00, ShardItemLast = 0x4CFF;
+         private static bool IsOverrideId(ulong id) =>
+-            id >= OverrideFirst && id <= OverrideLast || id >= TabardFirst && id <= TabardLast;
++            id >= OverrideFirst && id <= OverrideLast || id >= ShardItemFirst && id <= ShardItemLast;
+         private const int MaxLineWarnings = 20;
+
+         private void ApplyOverrides(string dir)
+@@ -99,8 +100,8 @@ namespace ClassicUO.Assets
+                 if (v[i] > max[i])
+                     return $"{names[i]} {v[i]} is out of range (max {max[i]})";
+             }
+             if (!IsOverrideId(v[0]))
+-                return $"id 0x{v[0]:X} is outside the reserved override ranges 0x{OverrideFirst:X}-0x{OverrideLast:X} and 0x{TabardFirst:X}-0x{TabardLast:X} (stock tiledata is never overridden)";
++                return $"id 0x{v[0]:X} is outside the reserved override range 0x{OverrideFirst:X}-0x{OverrideLast:X} and the shard items 0x{ShardItemFirst:X}-0x{ShardItemLast:X} (stock tiledata is never overridden)";
+             if (v[0] >= (ulong)_staticData.Length)
+                 return $"id 0x{v[0]:X} is beyond the loaded tiledata ({_staticData.Length} statics)";
+             id = (uint)v[0];
