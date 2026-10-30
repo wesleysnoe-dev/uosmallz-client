@@ -1,5 +1,5 @@
-# UO Smallz Knight's Surcoat (LOCAL TEST, clothing-build v14): id,flags,weight,layer,count,animId,hue,lightIndex,height,name
-# read by client patch 0005; 0x4C08-0x4C09 need client-code/0008-uooffline-knights-surcoat-tiledata-ids.patch (0005+0007 accept 0x4C00-0x4C07 only)
+# UO Smallz Knight's Surcoat (shipped in client v17, clothing-build v14): id,flags,weight,layer,count,animId,hue,lightIndex,height,name
+# read by client patch 0005; 0x4C08-0x4C09 are in the reserved shard-item block 0x4C00-0x4CFF (patch 0008-uooffline-shard-item-tiledata-ids.patch)
 # values = the stock surcoat 0x1FFD/0x1FFE record byte for byte with animId 910 -> 1229; count 0xB1 = the record's misc
 # u16 (bytes 10-11, read by the client as the low half of count; faction-tabards.csv has 0 there)
 0x4C08,0x404002,6,17,0xB1,1229,0,12,1,surcoat

@@ -1,4 +1,4 @@
-# UO Smallz Knight's Surcoat (LOCAL TEST): body,itemAnimId,animGraphic,gump,hue   (client patch 0007)
+# UO Smallz Knight's Surcoat (shipped in client v17): body,itemAnimId,animGraphic,gump,hue   (client patch 0007)
 # body 400/401 human, 605/606 elf. animGraphic 910 = the stock surcoat animation drawn in the world; gump 0 = the itemAnimId
 # (paperdoll gump 50000+1229 = 51229 male, 60000+1229 = 61229 female); hue 0 = the item's own hue
 400,1229,910,0,0
