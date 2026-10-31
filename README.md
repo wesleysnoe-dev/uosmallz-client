@@ -115,7 +115,7 @@ CORVAEOBORO ART: SCROLLS, REAGENTS, SPELL ICONS (v16, test)
   are in ExternalImages\CORVAE-ART-NOTICE.txt and corvae-art-ids.csv, and in
   notices\NOTICE.txt. To go back, delete those PNGs (or install the previous client).
 
-KNIGHT'S SURCOAT (client v17)
+KNIGHT'S SURCOAT (client v17, new paperdoll art v18)
   v17 reserves the item id block 0x4C00-0x4CFF for the shard's own items:
   patches/client/0008 widens patch 0005's tiledata override from the tabards'
   0x4C00-0x4C07 to 0x4C00-0x4CFF (the tabards work as before; 0xFE00-0xFE0D is
@@ -128,6 +128,9 @@ KNIGHT'S SURCOAT (client v17)
   paperdoll; 1229 is inside patch 0007's anim range, so 0007 is unchanged).
   An older client has no tiledata or art for these ids, so the surcoat is
   invisible there: the server item must only go out after players have v17.
+  v18 replaces the two paperdoll gumps 0xC81D (51229) and 0xEF2D (61229) with
+  Wes's hand-painted art; item art 0x4C08/0x4C09, anim 1229 and the csvs are
+  unchanged.
 
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
