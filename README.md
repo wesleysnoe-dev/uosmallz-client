@@ -132,6 +132,23 @@ KNIGHT'S SURCOAT (client v17, new paperdoll art v18)
   Wes's hand-painted art; item art 0x4C08/0x4C09, anim 1229 and the csvs are
   unchanged.
 
+IMPORTED CLOTHING (client v19)
+  v19 adds 23 clothing items for the shard in the reserved item block: item ids
+  0x4C0A-0x4C37 (base/flip pairs), anim ids 1206-1228, paperdoll gumps 0xC806-0xC81C
+  (51206-51228, male) and 0xEF16-0xEF2C (61206-61228, female). patches/client/0009
+  lowers patch 0007's EquipConv anim range to start at 1206 (it was 1220; 1229-1233,
+  the surcoat and the tabards, are unchanged). New files: TileData\outlands-clothing.csv
+  (each item's tiledata cloned from a stock item of its slot, with the new anim) and
+  EquipConv\outlands-clothing.csv (the world animation is the stock item's), 46 paperdoll
+  gumps in ExternalImages\gumps and 46 item arts in ExternalImages\art. Most are gray
+  (dyeable); baroque jacket, buckled waistcoat, golden piped tricorne, riveted belt,
+  riveted boots, rolled low boots and decorative quiver are coloured, so a hue tints them.
+  The paperdoll art and most bag icons come from the UO Outlands wiki (Prevalian
+  Merchant clothing page); the wiki shows no licence. Four items (trousers, fancy cloak,
+  fancy skirt with slit, rolled low boots) have no wiki icon and use their stock clone's
+  item art. An older client has no tiledata or art for these ids, so the items are
+  invisible there: the server items must only go out after players have v19.
+
 HD ART
   Since client v4 the game can draw HD art: every item, gump and land tile
   at twice the detail, drawn at the normal size (the difference shows most
