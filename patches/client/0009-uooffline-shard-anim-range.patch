@@ -1,0 +1,16 @@
+diff --git a/src/ClassicUO.Assets/AnimationsLoader.cs b/src/ClassicUO.Assets/AnimationsLoader.cs
+--- a/src/ClassicUO.Assets/AnimationsLoader.cs
++++ b/src/ClassicUO.Assets/AnimationsLoader.cs
+@@ -550,7 +550,11 @@ namespace ClassicUO.Assets
+         //   hue        the colour the world animation is drawn in when the item has none (0 = none)
+         // Only the reserved shard range of item anim ids is accepted (Equipconv.def entries are never overridden);
+         // a bad line is logged (file and line) and skipped; nothing here throws.
+-        public const int UoOfflineAnimFirst = 1220, UoOfflineAnimLast = 1233;
++        // uo-offline (UO Smallz) 0009: the shard range starts at 1206 (was 1220) for the imported clothing (anims 1206-1228,
++        // item ids 0x4C0A-0x4C37). It grows down, not up: anims 1234-1238 are stock talismans, the gumps 51234-51243 and
++        // 61239-61243 are stock art and 61244+ is past the end of gumpidx.mul. Every anim in 1206-1233 is unused by stock
++        // wearables and Equipconv.def, and its gumps 50000+ / 60000+ are empty in gumpidx.mul.
++        public const int UoOfflineAnimFirst = 1206, UoOfflineAnimLast = 1233;
+ 
+         private void ApplyUoOfflineEquipConv(string dir)
+         {
