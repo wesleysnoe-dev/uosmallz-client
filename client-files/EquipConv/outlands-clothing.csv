@@ -1,0 +1,118 @@
+# UO Smallz imported clothing (Outlands-wiki art, DRAFT, not released): body,itemAnimId,animGraphic,gump,hue   (client patch 0007)
+# body 400/401 human, 605/606 elf. itemAnimId 1206-1228 needs patch 0009 (range 1206-1233). animGraphic = the stock clone
+# item's world animation; gump 0 = the itemAnimId (paperdoll gump 50000+anim male, 60000+anim female); hue 0 = the item's own hue
+# Baroque Jacket (OuterTorso): stock clone 0x1F03/0x1F04 robe, world anim 469
+400,1206,469,0,0
+401,1206,469,0,0
+605,1206,469,0,0
+606,1206,469,0,0
+# Buckled Waistcoat (MiddleTorso): stock clone 0x1F7B/0x1F7C doublet, world anim 913
+400,1207,913,0,0
+401,1207,913,0,0
+605,1207,913,0,0
+606,1207,913,0,0
+# Diadem (Helm): stock clone 0x2B6E/0x3165 circlet, world anim 962
+400,1208,962,0,0
+401,1208,962,0,0
+605,1208,962,0,0
+606,1208,962,0,0
+# Fingerless Gloves (Gloves): stock clone 0x13C6/0x13CE leather gloves, world anim 545
+400,1209,545,0,0
+401,1209,545,0,0
+605,1209,545,0,0
+606,1209,545,0,0
+# Frilled Blouse (Shirt): stock clone 0x1EFD/0x1EFE fancy shirt, world anim 435
+400,1210,435,0,0
+401,1210,435,0,0
+605,1210,435,0,0
+606,1210,435,0,0
+# Golden Piped Tricorne (Helm): stock clone 0x171B/0x171B tricorne hat, world anim 412
+400,1211,412,0,0
+401,1211,412,0,0
+605,1211,412,0,0
+606,1211,412,0,0
+# Hide Bracers (Arms): stock clone 0x13CD/0x13C5 leather sleeves, world anim 544
+400,1212,544,0,0
+401,1212,544,0,0
+605,1212,544,0,0
+606,1212,544,0,0
+# Hoop Skirt (OuterLegs): stock clone 0x1516/0x1531 skirt, world anim 449
+400,1213,449,0,0
+401,1213,449,0,0
+605,1213,449,0,0
+606,1213,449,0,0
+# Knit Shawl (Neck): stock clone 0x13C7/0x13C7 leather gorget, world anim 546
+400,1214,546,0,0
+401,1214,546,0,0
+605,1214,546,0,0
+606,1214,546,0,0
+# Laced Breeches (Pants): stock clone 0x1539/0x153A long pants, world anim 431
+400,1215,431,0,0
+401,1215,431,0,0
+605,1215,431,0,0
+606,1215,431,0,0
+# Leather Sash (MiddleTorso): stock clone 0x1541/0x1542 body sash, world anim 490
+400,1216,490,0,0
+401,1216,490,0,0
+605,1216,490,0,0
+606,1216,490,0,0
+# Plain Open Robe (OuterTorso): stock clone 0x1F03/0x1F04 robe, world anim 469
+400,1217,469,0,0
+401,1217,469,0,0
+605,1217,469,0,0
+606,1217,469,0,0
+# Riveted Belt with Pouch (Waist): stock clone 0x2790/0x27DB leather ninja belt, world anim 514
+400,1218,514,0,0
+401,1218,514,0,0
+605,1218,514,0,0
+606,1218,514,0,0
+# Riveted Boots (Shoes): stock clone 0x170B/0x170C boots, world anim 477
+400,1219,477,0,0
+401,1219,477,0,0
+605,1219,477,0,0
+606,1219,477,0,0
+# Ruffled Collar (Neck): stock clone 0x13C7/0x13C7 leather gorget, world anim 546
+400,1220,546,0,0
+401,1220,546,0,0
+605,1220,546,0,0
+606,1220,546,0,0
+# Short Cloak (Cloak): stock clone 0x1515/0x1530 cloak, world anim 468
+400,1221,468,0,0
+401,1221,468,0,0
+605,1221,468,0,0
+606,1221,468,0,0
+# Tied Scarf (Neck): stock clone 0x13C7/0x13C7 leather gorget, world anim 546
+400,1222,546,0,0
+401,1222,546,0,0
+605,1222,546,0,0
+606,1222,546,0,0
+# Tiered Skirt (OuterLegs): stock clone 0x1537/0x1538 kilt, world anim 455
+400,1223,455,0,0
+401,1223,455,0,0
+605,1223,455,0,0
+606,1223,455,0,0
+# Trousers (Pants): stock clone 0x1539/0x153A long pants, world anim 431
+400,1224,431,0,0
+401,1224,431,0,0
+605,1224,431,0,0
+606,1224,431,0,0
+# Decorative Quiver (Cloak): stock clone 0x2FB7/0x3171 elven quiver, world anim 896
+400,1225,896,0,0
+401,1225,896,0,0
+605,1225,896,0,0
+606,1225,896,0,0
+# Fancy Cloak (Cloak): stock clone 0x1515/0x1530 cloak, world anim 468
+400,1226,468,0,0
+401,1226,468,0,0
+605,1226,468,0,0
+606,1226,468,0,0
+# Fancy Skirt with Slit (OuterLegs): stock clone 0x1516/0x1531 skirt, world anim 449
+400,1227,449,0,0
+401,1227,449,0,0
+605,1227,449,0,0
+606,1227,449,0,0
+# Rolled Low Boots (Shoes): stock clone 0x170B/0x170C boots, world anim 477
+400,1228,477,0,0
+401,1228,477,0,0
+605,1228,477,0,0
+606,1228,477,0,0

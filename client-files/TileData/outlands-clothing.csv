@@ -1,0 +1,73 @@
+# UO Smallz imported clothing (Outlands-wiki art, DRAFT, not released): id,flags,weight,layer,count,animId,hue,lightIndex,height,name
+# read by client patch 0005; ids 0x4C0A-0x4C37 are in the reserved shard-item block 0x4C00-0x4CFF (patch 0008)
+# values = clothing-build --stubs-only rows (tiledata of the stock clone item, animId = the new anim); count = the clone
+# record's misc u16 as in knights-surcoat.csv. decorative quiver: the elven quiver's flags minus Container 0x200000
+# Baroque Jacket (OuterTorso): stock clone 0x1F03/0x1F04 robe
+0x4C0A,0x404002,3,22,0xC1,1206,0,9,1,baroque jacket
+0x4C0B,0x404002,3,22,0xC1,1206,0,9,1,baroque jacket
+# Buckled Waistcoat (MiddleTorso): stock clone 0x1F7B/0x1F7C doublet
+0x4C0C,0x404002,2,17,0xB2,1207,0,7,1,buckled waistcoat
+0x4C0D,0x404002,2,17,0xB2,1207,0,7,1,buckled waistcoat
+# Diadem (Helm): stock clone 0x2B6E/0x3165 circlet
+0x4C0E,0x400002,2,6,0x1D4,1208,0,10,1,diadem
+0x4C0F,0x400002,2,6,0x1D4,1208,0,10,1,diadem
+# Fingerless Gloves (Gloves): stock clone 0x13C6/0x13CE leather gloves
+0x4C10,0x400002,1,7,0x67,1209,0,5,1,fingerless gloves
+0x4C11,0x400002,1,7,0x67,1209,0,5,1,fingerless gloves
+# Frilled Blouse (Shirt): stock clone 0x1EFD/0x1EFE fancy shirt
+0x4C12,0x404002,2,5,0xB0,1210,0,8,1,frilled blouse
+0x4C13,0x404002,2,5,0xB0,1210,0,8,1,frilled blouse
+# Golden Piped Tricorne (Helm): stock clone 0x171B/0x171B tricorne hat
+0x4C14,0x444002,1,6,0xD2,1211,0,4,1,tricorne
+0x4C15,0x444002,1,6,0xD2,1211,0,4,1,tricorne
+# Hide Bracers (Arms): stock clone 0x13CD/0x13C5 leather sleeves
+0x4C16,0x400002,2,19,0x66,1212,0,6,1,hide bracers
+0x4C17,0x400002,2,19,0x66,1212,0,6,1,hide bracers
+# Hoop Skirt (OuterLegs): stock clone 0x1516/0x1531 skirt
+0x4C18,0x404002,4,23,0xB7,1213,0,1,1,hoop skirt
+0x4C19,0x404002,4,23,0xB7,1213,0,1,1,hoop skirt
+# Knit Shawl (Neck): stock clone 0x13C7/0x13C7 leather gorget
+0x4C1A,0x404002,1,10,0x68,1214,0,5,1,knit shawl
+0x4C1B,0x404002,1,10,0x68,1214,0,5,1,knit shawl
+# Laced Breeches (Pants): stock clone 0x1539/0x153A long pants
+0x4C1C,0x400002,2,4,0xB9,1215,0,3,1,laced breeches
+0x4C1D,0x400002,2,4,0xB9,1215,0,3,1,laced breeches
+# Leather Sash (MiddleTorso): stock clone 0x1541/0x1542 body sash
+0x4C1E,0x404002,1,17,0xE3,1216,0,3,0,leather sash
+0x4C1F,0x404002,1,17,0xE3,1216,0,3,0,leather sash
+# Plain Open Robe (OuterTorso): stock clone 0x1F03/0x1F04 robe
+0x4C20,0x404002,3,22,0xC1,1217,0,9,1,open robe
+0x4C21,0x404002,3,22,0xC1,1217,0,9,1,open robe
+# Riveted Belt with Pouch (Waist): stock clone 0x2790/0x27DB leather ninja belt
+0x4C22,0x404002,1,12,0x1A5,1218,0,5,1,riveted belt
+0x4C23,0x404002,1,12,0x1A5,1218,0,5,1,riveted belt
+# Riveted Boots (Shoes): stock clone 0x170B/0x170C boots
+0x4C24,0x400002,3,3,0xCB,1219,0,4,1,riveted boots
+0x4C25,0x400002,3,3,0xCB,1219,0,4,1,riveted boots
+# Ruffled Collar (Neck): stock clone 0x13C7/0x13C7 leather gorget
+0x4C26,0x404002,1,10,0x68,1220,0,5,1,ruffled collar
+0x4C27,0x404002,1,10,0x68,1220,0,5,1,ruffled collar
+# Short Cloak (Cloak): stock clone 0x1515/0x1530 cloak
+0x4C28,0x404002,5,20,0xE1,1221,0,1,1,short cloak
+0x4C29,0x404002,5,20,0xE1,1221,0,1,1,short cloak
+# Tied Scarf (Neck): stock clone 0x13C7/0x13C7 leather gorget
+0x4C2A,0x404002,1,10,0x68,1222,0,5,1,tied scarf
+0x4C2B,0x404002,1,10,0x68,1222,0,5,1,tied scarf
+# Tiered Skirt (OuterLegs): stock clone 0x1537/0x1538 kilt
+0x4C2C,0x404002,2,23,0xB8,1223,0,4,1,tiered skirt
+0x4C2D,0x404002,2,23,0xB8,1223,0,4,1,tiered skirt
+# Trousers (Pants): stock clone 0x1539/0x153A long pants
+0x4C2E,0x400002,2,4,0xB9,1224,0,3,1,trousers
+0x4C2F,0x400002,2,4,0xB9,1224,0,3,1,trousers
+# Decorative Quiver (Cloak): stock clone 0x2FB7/0x3171 elven quiver
+0x4C30,0x400002,2,20,0x1DB,1225,0,20,8,decorative quiver
+0x4C31,0x400002,2,20,0x1DB,1225,0,20,8,decorative quiver
+# Fancy Cloak (Cloak): stock clone 0x1515/0x1530 cloak
+0x4C32,0x404002,5,20,0xE1,1226,0,1,1,fancy cloak
+0x4C33,0x404002,5,20,0xE1,1226,0,1,1,fancy cloak
+# Fancy Skirt with Slit (OuterLegs): stock clone 0x1516/0x1531 skirt
+0x4C34,0x404002,4,23,0xB7,1227,0,1,1,fancy skirt
+0x4C35,0x404002,4,23,0xB7,1227,0,1,1,fancy skirt
+# Rolled Low Boots (Shoes): stock clone 0x170B/0x170C boots
+0x4C36,0x400002,3,3,0xCB,1228,0,4,1,rolled low boots
+0x4C37,0x400002,3,3,0xCB,1228,0,4,1,rolled low boots
